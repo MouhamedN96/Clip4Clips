@@ -1,0 +1,37 @@
+# ClipForge API Dockerfile
+FROM node:20-alpine
+
+# Install system dependencies
+RUN apk add --no-cache \
+    curl \
+    ffmpeg \
+    yt-dlp \
+    python3 \
+    py3-pip
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies (no lockfile committed, so use install not ci)
+RUN npm install --omit=dev --no-audit --no-fund
+
+# Copy source code
+COPY src ./src
+COPY config ./config
+COPY scripts ./scripts
+
+# Create data directory
+RUN mkdir -p /app/data
+
+# Expose port
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD curl -f http://localhost:3000/health || exit 1
+
+# Start command
+CMD ["node", "src/api/server.js"]

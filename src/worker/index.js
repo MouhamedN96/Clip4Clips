@@ -1,0 +1,444 @@
+/**
+ * ClipForge Worker
+ * Background job processor for clip generation and outreach
+ */
+
+const { Pool } = require('pg');
+const Redis = require('ioredis');
+const WhopIntegration = require('../integration/whop');
+const HermesIntegration = require('../integration/hermes');
+const ProductionPipeline = require('../production/pipeline');
+const HiggsfieldProducer = require('../production/higgsfield');
+const StockReelProducer = require('../production/stockreel');
+
+const config = {
+    whop: {
+        apiKey: process.env.WHOP_API_KEY,
+        merchantId: process.env.WHOP_MERCHANT_ID,
+        webhookSecret: process.env.WHOP_WEBHOOK_SECRET,
+        defaultCommission: parseInt(process.env.WHOP_DEFAULT_COMMISSION) || 30,
+        referralCommission: parseInt(process.env.WHOP_REFERRAL_COMMISSION) || 25
+    }
+};
+
+const whop = new WhopIntegration(config.whop);
+const pipeline = new ProductionPipeline({ dataDir: process.env.CLIP_DATA_DIR || '/app/data' });
+const higgsfield = new HiggsfieldProducer({ dataDir: process.env.CLIP_DATA_DIR || '/app/data' });
+const stockReel = new StockReelProducer({ dataDir: process.env.CLIP_DATA_DIR || '/app/data' });
+
+// Hermes farm is optional at boot: connect lazily only when a post job runs.
+const hermes = new HermesIntegration({
+    relayUrl: process.env.HERMES_RELAY_URL,
+    apiKey: process.env.HERMES_API_KEY,
+    phoneCount: parseInt(process.env.HERMES_PHONE_COUNT) || 48,
+    timeout: parseInt(process.env.HERMES_CONNECTION_TIMEOUT) || 30000
+});
+let hermesReady = false;
+
+async function ensureHermes() {
+    if (hermesReady) return true;
+    if (!process.env.HERMES_RELAY_URL) return false; // farm not configured → dry-run
+    try {
+        await hermes.connect();
+        hermesReady = true;
+        return true;
+    } catch (error) {
+        console.error(`Hermes connect failed, posting in dry-run: ${error.message}`);
+        return false;
+    }
+}
+
+const pool = new Pool({
+    host: process.env.POSTGRES_HOST,
+    port: process.env.POSTGRES_PORT,
+    database: process.env.POSTGRES_DB,
+    user: process.env.POSTGRES_USER,
+    password: process.env.POSTGRES_PASSWORD
+});
+
+const redis = new Redis({
+    host: process.env.REDIS_HOST,
+    port: process.env.REDIS_PORT,
+    password: process.env.REDIS_PASSWORD,
+    db: process.env.REDIS_DB
+});
+
+// Worker queues
+const queues = {
+    clip: 'clip_queue',
+    generate: 'generate_queue',
+    reel: 'reel_queue',
+    post: 'post_queue',
+    outreach: 'outreach_queue',
+    analytics: 'analytics_queue',
+    onboarding: 'onboarding_queue'
+};
+
+// Process clip generation jobs.
+// Produces real clips, then parks each at status='pending_review' for a human
+// gate. Nothing auto-posts — approval happens via /api/clips/:id/approve.
+async function processClipJob(job) {
+    console.log(`Processing clip job: client=${job.clientId} source=${job.sourceUrl || job.sourcePath}`);
+
+    const client = await pool.connect();
+    let clipId;
+    try {
+        const inserted = await client.query(
+            `INSERT INTO clips (client_id, source_url, source_platform, status)
+             VALUES ($1, $2, $3, 'processing') RETURNING id`,
+            [job.clientId, job.sourceUrl || null, job.sourcePlatform || null]
+        );
+        clipId = inserted.rows[0].id;
+    } finally {
+        client.release();
+    }
+
+    try {
+        const produced = await pipeline.produce({ ...job, clipId });
+
+        if (!produced.length) {
+            await setClipStatus(clipId, 'failed', { error: 'no segments produced' });
+            return { clipId, status: 'failed' };
+        }
+
+        // First segment stays on this row; extra segments get their own rows.
+        const primary = produced[0];
+        await setClipStatus(clipId, 'pending_review', {
+            producedAt: new Date().toISOString(),
+            segments: produced.map(p => ({ start: p.start, end: p.end, path: p.path, title: p.title })),
+            clipPath: primary.path,
+            captions: primary.captions,
+            platforms: job.platforms || ['tiktok', 'youtube']
+        });
+
+        for (let i = 1; i < produced.length; i++) {
+            const seg = produced[i];
+            const extra = await pool.connect();
+            try {
+                await extra.query(
+                    `INSERT INTO clips (client_id, source_url, source_platform, title, status, metadata)
+                     VALUES ($1, $2, $3, $4, 'pending_review', $5)`,
+                    [job.clientId, job.sourceUrl || null, job.sourcePlatform || null, seg.title,
+                     JSON.stringify({ clipPath: seg.path, captions: seg.captions, start: seg.start, end: seg.end,
+                                      platforms: job.platforms || ['tiktok', 'youtube'] })]
+                );
+            } finally {
+                extra.release();
+            }
+        }
+
+        console.log(`Clip job produced ${produced.length} segment(s) awaiting review: ${clipId}`);
+        return { clipId, status: 'pending_review', segments: produced.length };
+    } catch (error) {
+        console.error(`Clip production failed (${clipId}): ${error.message}`);
+        if (clipId) await setClipStatus(clipId, 'failed', { error: error.message });
+        return { clipId, status: 'failed', error: error.message };
+    }
+}
+
+// Process generative spec-ad jobs (SMB path, no source footage → Higgsfield).
+// Lands at the same 'pending_review' gate as clipped videos.
+async function processGenerateJob(job) {
+    console.log(`Processing generate job: client=${job.clientId} brief=${(job.brief || job.productUrl || '').slice(0, 60)}`);
+
+    const client = await pool.connect();
+    let clipId;
+    try {
+        const inserted = await client.query(
+            `INSERT INTO clips (client_id, source_platform, title, status)
+             VALUES ($1, 'higgsfield', $2, 'processing') RETURNING id`,
+            [job.clientId, job.title || 'Spec ad']
+        );
+        clipId = inserted.rows[0].id;
+    } finally {
+        client.release();
+    }
+
+    try {
+        const seg = await higgsfield.generateSpecAd({ ...job, clipId });
+
+        if (!seg || seg.status === 'skipped' || !seg.path) {
+            await setClipStatus(clipId, 'failed', { error: seg && seg.reason ? seg.reason : 'no video produced' });
+            return { clipId, status: 'failed', reason: seg && seg.reason };
+        }
+
+        await setClipStatus(clipId, 'pending_review', {
+            producedAt: new Date().toISOString(),
+            clipPath: seg.path,
+            provider: seg.provider || 'higgsfield',
+            model: seg.model,
+            captions: seg.captions || { status: 'n/a' },
+            platforms: job.platforms || ['tiktok', 'instagram']
+        });
+
+        console.log(`Spec-ad generated, awaiting review: ${clipId}`);
+        return { clipId, status: 'pending_review' };
+    } catch (error) {
+        console.error(`Spec-ad generation failed (${clipId}): ${error.message}`);
+        if (clipId) await setClipStatus(clipId, 'failed', { error: error.message });
+        return { clipId, status: 'failed', error: error.message };
+    }
+}
+
+// Process free stock-reel jobs (SMB path, no footage → Pexels/Pixabay assembly).
+// Same 'pending_review' gate. $0 COGS beyond a cheap script call.
+async function processReelJob(job) {
+    console.log(`Processing reel job: client=${job.clientId} brief=${(job.brief || '').slice(0, 60)}`);
+
+    const client = await pool.connect();
+    let clipId;
+    try {
+        const inserted = await client.query(
+            `INSERT INTO clips (client_id, source_platform, title, status)
+             VALUES ($1, 'stock', $2, 'processing') RETURNING id`,
+            [job.clientId, job.title || 'Stock reel']
+        );
+        clipId = inserted.rows[0].id;
+    } finally {
+        client.release();
+    }
+
+    try {
+        const seg = await stockReel.generateReel({ ...job, clipId });
+
+        if (!seg || seg.status === 'skipped' || !seg.path) {
+            await setClipStatus(clipId, 'failed', { error: seg && seg.reason ? seg.reason : 'no reel produced' });
+            return { clipId, status: 'failed', reason: seg && seg.reason };
+        }
+
+        await setClipStatus(clipId, 'pending_review', {
+            producedAt: new Date().toISOString(),
+            clipPath: seg.path,
+            provider: seg.provider || 'stock',
+            model: seg.model,
+            scenes: seg.scenes,
+            captions: seg.captions || { status: 'n/a' },
+            platforms: job.platforms || ['tiktok', 'instagram']
+        });
+
+        console.log(`Stock reel produced, awaiting review: ${clipId}`);
+        return { clipId, status: 'pending_review' };
+    } catch (error) {
+        console.error(`Stock reel failed (${clipId}): ${error.message}`);
+        if (clipId) await setClipStatus(clipId, 'failed', { error: error.message });
+        return { clipId, status: 'failed', error: error.message };
+    }
+}
+
+// Update a clip's status + merge metadata.
+async function setClipStatus(clipId, status, metaPatch = {}) {
+    const client = await pool.connect();
+    try {
+        await client.query(
+            `UPDATE clips
+             SET status = $1,
+                 metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb
+             WHERE id = $3`,
+            [status, JSON.stringify(metaPatch), clipId]
+        );
+    } finally {
+        client.release();
+    }
+}
+
+// Process posting jobs (approved clips → Hermes farm).
+// Enqueued by the approval endpoint, never automatically.
+async function processPostJob(job) {
+    console.log(`Processing post job: clip=${job.clipId} platforms=${(job.platforms || []).join(',')}`);
+
+    const clipPath = job.clipPath;
+    const caption = job.caption || job.title || '';
+    const platforms = job.platforms && job.platforms.length ? job.platforms : ['tiktok'];
+
+    const live = await ensureHermes();
+    const results = [];
+
+    for (const platform of platforms) {
+        try {
+            let result;
+            if (!live) {
+                result = { success: true, dryRun: true };
+                console.log(`[dry-run] would post ${clipPath} to ${platform}`);
+            } else {
+                const phone = hermes.getAvailablePhone(job.tier || 1);
+                if (!phone) throw new Error('no available phone in farm');
+                result = platform === 'instagram'
+                    ? await hermes.postInstagram(phone.id, clipPath, caption)
+                    : await hermes.postTikTok(phone.id, clipPath, caption);
+            }
+            results.push({ platform, ...result });
+        } catch (error) {
+            console.error(`Post to ${platform} failed: ${error.message}`);
+            results.push({ platform, success: false, error: error.message });
+        }
+    }
+
+    const anyPosted = results.some(r => r.success);
+    await setClipStatus(job.clipId, anyPosted ? 'posted' : 'failed', {
+        postResults: results,
+        postedAt: anyPosted ? new Date().toISOString() : undefined,
+        dryRun: !live
+    });
+
+    if (anyPosted) {
+        const client = await pool.connect();
+        try {
+            await client.query(
+                `UPDATE clips SET platforms_posted = $1, posted_at = NOW() WHERE id = $2`,
+                [results.filter(r => r.success).map(r => r.platform), job.clipId]
+            );
+        } finally {
+            client.release();
+        }
+    }
+
+    return { clipId: job.clipId, results };
+}
+
+// Process outreach jobs (human-APPROVED DMs → Hermes farm).
+// Only reaches here after /api/outreach/:id/approve. Dry-runs without a farm.
+async function processOutreachJob(job) {
+    console.log(`Processing outreach job: ${job.targetHandle} (${job.targetPlatform})`);
+
+    const live = await ensureHermes();
+    let result;
+    try {
+        if (!live) {
+            result = { success: true, dryRun: true };
+            console.log(`[dry-run] would DM ${job.targetHandle} on ${job.targetPlatform}`);
+        } else {
+            const phone = hermes.getAvailablePhone(job.tier || 1);
+            if (!phone) throw new Error('no available phone in farm');
+            result = job.targetPlatform === 'instagram'
+                ? await hermes.sendInstagramDM(phone.id, job.targetHandle, job.message)
+                : await hermes.sendTikTokDM(phone.id, job.targetHandle, job.message);
+        }
+    } catch (error) {
+        console.error(`Outreach send failed (${job.targetHandle}): ${error.message}`);
+        result = { success: false, error: error.message };
+    }
+
+    // Update the existing staged row (created by /api/outreach/send).
+    const dbClient = await pool.connect();
+    try {
+        if (job.messageId) {
+            await dbClient.query(
+                `UPDATE outreach_messages
+                 SET status = $1, message_sent_at = $2
+                 WHERE id = $3`,
+                [result.success ? 'sent' : 'failed',
+                 result.success ? new Date().toISOString() : null,
+                 job.messageId]
+            );
+        } else {
+            // Fallback for ad-hoc jobs without a staged row.
+            await dbClient.query(
+                `INSERT INTO outreach_messages
+                 (target_handle, target_platform, message_content, message_sent_at, status)
+                 VALUES ($1, $2, $3, $4, $5)`,
+                [job.targetHandle, job.targetPlatform, job.message,
+                 result.success ? new Date().toISOString() : null,
+                 result.success ? 'sent' : 'failed']
+            );
+        }
+    } finally {
+        dbClient.release();
+    }
+
+    console.log(`Outreach ${result.success ? 'sent' : 'failed'}: ${job.targetHandle}`);
+    return { targetHandle: job.targetHandle, ...result };
+}
+
+// Process onboarding jobs
+async function processOnboardingJob(job) {
+    console.log(`Processing onboarding: ${job.email}`);
+
+    // (Creator intelligence on new clients is now an operator-agent task via
+    // connected MCP servers, not an inline subprocess call.)
+
+    // Queue initial clips for processing
+    await redis.lpush('clip_queue', JSON.stringify({
+        clientId: job.email,
+        sourceUrl: 'onboarding_initial',
+        platforms: ['tiktok'],
+        queuedAt: new Date().toISOString()
+    }));
+
+    return { status: 'onboarded', email: job.email };
+}
+
+// Process analytics jobs
+async function processAnalyticsJob(job) {
+    console.log(`Processing analytics: ${job.clientId}`);
+
+    const dbClient = await pool.connect();
+    try {
+        // Calculate revenue for client
+        const result = await dbClient.query(
+            `SELECT SUM(revenue_generated) as total_revenue
+             FROM clips WHERE client_id = $1`,
+            [job.clientId]
+        );
+
+        const totalRevenue = result.rows[0]?.total_revenue || 0;
+
+        // Record analytics
+        await dbClient.query(
+            `INSERT INTO analytics
+             (client_id, metric_type, metric_value)
+             VALUES ($1, 'total_revenue', $2)`,
+            [job.clientId, totalRevenue]
+        );
+
+        return { clientId: job.clientId, totalRevenue };
+    } finally {
+        dbClient.release();
+    }
+}
+
+// Worker loop.
+// Each consumer gets its OWN Redis connection: BRPOP is blocking, and multiple
+// blocking commands on one shared connection serialize, stalling other queues
+// up to the timeout each cycle. A dedicated connection per queue keeps them
+// genuinely concurrent.
+async function runWorker(queueName, processor) {
+    console.log(`Starting worker for queue: ${queueName}`);
+    const conn = redis.duplicate();
+
+    while (true) {
+        try {
+            // Blocking pop from queue
+            const job = await conn.brpop(queueName, 5);
+
+            if (job) {
+                const jobData = JSON.parse(job[1]);
+                await processor(jobData);
+            }
+        } catch (error) {
+            console.error(`Worker error (${queueName}): ${error.message}`);
+            // Exponential backoff on error
+            await new Promise(resolve => setTimeout(resolve, 5000));
+        }
+    }
+}
+
+// Main worker initialization
+async function main() {
+    console.log('ClipForge Worker starting...');
+
+    // Start workers for each queue
+    await Promise.all([
+        runWorker(queues.clip, processClipJob),
+        runWorker(queues.generate, processGenerateJob),
+        runWorker(queues.reel, processReelJob),
+        runWorker(queues.post, processPostJob),
+        runWorker(queues.outreach, processOutreachJob),
+        runWorker(queues.onboarding, processOnboardingJob),
+        runWorker(queues.analytics, processAnalyticsJob)
+    ]);
+}
+
+main().catch(error => {
+    console.error('Worker crashed:', error);
+    process.exit(1);
+});

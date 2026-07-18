@@ -1,0 +1,29 @@
+# ClipForge Crontab
+# Scheduled tasks for intelligence gathering and maintenance
+
+# Creator discovery - Every 6 hours
+0 */6 * * * cd /app && node src/scheduler/discovery.js >> /app/logs/discovery.log 2>&1
+
+# Gaming trends - Daily at 8 AM
+0 8 * * * cd /app && node src/scheduler/trends.js gaming >> /app/logs/trends.log 2>&1
+
+# Podcast trends - Daily at 9 AM
+0 9 * * * cd /app && node src/scheduler/trends.js podcast >> /app/logs/trends.log 2>&1
+
+# Competitor analysis - Daily at 10 AM
+0 10 * * * cd /app && node src/scheduler/competitors.js >> /app/logs/competitors.log 2>&1
+
+# Analytics sync - Every hour
+0 * * * * cd /app && node src/scheduler/analytics.js >> /app/logs/analytics.log 2>&1
+
+# Viral bonus check - Daily at midnight
+0 0 * * * cd /app && node src/scheduler/viral-check.js >> /app/logs/viral.log 2>&1
+
+# Weekly report - Monday at 8 AM
+0 8 * * 1 cd /app && node src/scheduler/weekly-report.js >> /app/logs/weekly.log 2>&1
+
+# Cleanup expired intelligence - Every 15 minutes
+*/15 * * * * cd /app && node src/scheduler/cleanup.js >> /app/logs/cleanup.log 2>&1
+
+# Hermes health check - Every 5 minutes
+*/5 * * * * curl -sf http://localhost:3000/health >> /app/logs/health.log 2>&1 || echo "$(date) Health check failed" >> /app/logs/health-errors.log

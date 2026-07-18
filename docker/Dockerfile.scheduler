@@ -1,0 +1,21 @@
+# ClipForge Scheduler Dockerfile
+FROM node:20-alpine
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies (no lockfile committed, so use install not ci)
+RUN npm install --omit=dev --no-audit --no-fund
+
+# Copy source code
+COPY src ./src
+COPY config ./config
+
+# Create data directory
+RUN mkdir -p /app/data
+
+# Run the self-contained scheduler loop (implements all cron jobs in one process)
+CMD ["node", "src/scheduler/index.js"]

@@ -1,0 +1,38 @@
+{
+  "_comment": "ClipForge MCP wiring. Same shape works for Claude Code (.mcp.json / claude mcp add), Codex, and Pi. Copy the 'clipforge' block into your agent's MCP config. Local deploy: use localhost. Operating from your laptop over Tailscale: point CLIPFORGE_API_URL at the Contabo tailnet name.",
+  "mcpServers": {
+    "clipforge": {
+      "command": "node",
+      "args": ["/opt/clipforge/src/mcp/server.mjs"],
+      "env": {
+        "CLIPFORGE_API_URL": "http://localhost:3000"
+      }
+    },
+    "clipforge_over_tailscale": {
+      "command": "node",
+      "args": ["/opt/clipforge/src/mcp/server.mjs"],
+      "env": {
+        "CLIPFORGE_API_URL": "http://contabo-01.your-tailnet.ts.net:3000",
+        "CLIPFORGE_API_SECRET": "set-if-you-enable-api-auth"
+      }
+    },
+
+    "_intelligence_comment": "Intelligence/lead-gen is NOT built into ClipForge — connect these existing MCP servers so the operator agent can research + find leads, then push vetted ones in via clipforge.stage_outreach. Enable the ones you want; each needs its own key.",
+
+    "scrapecreators": {
+      "command": "npx",
+      "args": ["-y", "@scrapecreators/mcp-server"],
+      "env": { "SCRAPECREATORS_API_KEY": "your-scrapecreators-key" }
+    },
+    "apify": {
+      "command": "npx",
+      "args": ["-y", "@apify/actors-mcp-server"],
+      "env": { "APIFY_TOKEN": "your-apify-token" }
+    },
+    "exa": {
+      "command": "npx",
+      "args": ["-y", "exa-mcp-server"],
+      "env": { "EXA_API_KEY": "your-exa-key" }
+    }
+  }
+}

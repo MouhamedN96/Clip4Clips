@@ -1,0 +1,29 @@
+# ClipForge Worker Dockerfile
+FROM node:20-alpine
+
+# Install system dependencies
+RUN apk add --no-cache \
+    curl \
+    ffmpeg \
+    yt-dlp \
+    python3 \
+    py3-pip
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies (no lockfile committed, so use install not ci)
+RUN npm install --omit=dev --no-audit --no-fund
+
+# Copy source code
+COPY src ./src
+COPY config ./config
+
+# Create data directory
+RUN mkdir -p /app/data
+
+# Worker command (runs continuously)
+CMD ["node", "src/worker/index.js"]
