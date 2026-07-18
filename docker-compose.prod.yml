@@ -1,0 +1,123 @@
+# ClipForge — shared-host production compose
+# ---------------------------------------------------------------------------
+# Use this instead of docker/docker-compose.yml when the box ALREADY runs a
+# reverse proxy / other services (e.g. a Coolify or Traefik host). Differences
+# from the base compose:
+#   • NO bundled nginx  — the host proxy already owns :80/:443.
+#   • API is published ONLY on ${API_BIND:-127.0.0.1} — never on the public IP.
+#       - on-box agent (CC/Codex) reaches it at http://127.0.0.1:3000
+#       - for tailnet-wide access set API_BIND=<your-tailnet-ip> in config/.env
+#   • Postgres/Redis stay Docker-internal (not host-published) — no port clash.
+#
+# Deploy:
+#   docker compose --env-file config/.env -f docker-compose.prod.yml up -d --build
+# The --env-file is REQUIRED so ${POSTGRES_PASSWORD}/${REDIS_PASSWORD} interpolate
+# (ClipForge keeps its env at config/.env, not ./.env).
+#
+# Posting/DMs: on hosts running the hermes-agent (MCP), ClipForge's own Hermes
+# relay path is left OFF (dry-run) — the operator agent bridges approved clips to
+# Hermes' MCP tools. See docs/DEPLOY-SHARED-HOST.md.
+
+services:
+  clipforge-api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: clipforge-api
+    restart: unless-stopped
+    ports:
+      - "${API_BIND:-127.0.0.1}:3000:3000"
+    env_file:
+      - config/.env
+    volumes:
+      - ./src:/app/src
+      - ./config:/app/config
+      - clipforge-data:/app/data
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - clipforge-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  clipforge-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    restart: unless-stopped
+    env_file:
+      - config/.env
+    volumes:
+      - ./src:/app/src
+      - ./config:/app/config
+      - clipforge-data:/app/data
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - clipforge-network
+    deploy:
+      replicas: 1
+
+  clipforge-scheduler:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.scheduler
+    container_name: clipforge-scheduler
+    restart: unless-stopped
+    env_file:
+      - config/.env
+    volumes:
+      - ./src:/app/src
+      - ./config:/app/config
+      - clipforge-data:/app/data
+    networks:
+      - clipforge-network
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: clipforge-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: clipforge
+      POSTGRES_USER: clipforge
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - clipforge-postgres-data:/var/lib/postgresql/data
+      - ./config/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - clipforge-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clipforge -d clipforge"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: clipforge-redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - clipforge-redis-data:/data
+    networks:
+      - clipforge-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  clipforge-network:
+    driver: bridge
+
+volumes:
+  clipforge-postgres-data:
+  clipforge-redis-data:
+  clipforge-data:
