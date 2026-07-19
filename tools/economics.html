@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Interactive unit-economics model for the Clip4Clicks content-arbitrage + formula-UGC fleet.">
+<meta name="theme-color" content="#14110F">
+<title>Fleet Economics — ClipForge</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  :root{
+    --ink:#14110F; --panel:#1C1815; --panel-2:#241F1B; --line:#35302B;
+    --text:#ECE4DB; --muted:#9C9086; --accent:#FF3B2F; --accent-dim:#C22A22;
+    --good:#4FB65E; --warn:#E3A02E; --gold:#E3B24C;
+    --font-body:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --font-mono:ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace;
+    --ease:cubic-bezier(.2,.7,.2,1);
+  }
+  @media (prefers-color-scheme: light){
+    :root{ --ink:#F4EFE8; --panel:#FBF7F1; --panel-2:#FFFFFF; --line:#E2DACE;
+      --text:#1B1613; --muted:#6E645A; --accent:#DE3125; --accent-dim:#B4271D;
+      --good:#1A7F37; --warn:#B4690E; --gold:#B07C1C; }
+  }
+  :root[data-theme="dark"]{ --ink:#14110F; --panel:#1C1815; --panel-2:#241F1B; --line:#35302B; --text:#ECE4DB; --muted:#9C9086; --accent:#FF3B2F; --good:#4FB65E; --warn:#E3A02E; }
+  :root[data-theme="light"]{ --ink:#F4EFE8; --panel:#FBF7F1; --panel-2:#FFFFFF; --line:#E2DACE; --text:#1B1613; --muted:#6E645A; --accent:#DE3125; --good:#1A7F37; --warn:#B4690E; }
+
+  body{margin:0; background:var(--ink); color:var(--text); font-family:var(--font-body);
+    font-size:16px; line-height:1.5; -webkit-font-smoothing:antialiased; overflow-x:hidden}
+  h1,h2,h3{margin:0; letter-spacing:-.02em; font-weight:800}
+  .mono{font-family:var(--font-mono); font-variant-numeric:tabular-nums}
+  .label{font-family:var(--font-mono); font-size:.7rem; letter-spacing:.18em; text-transform:uppercase; color:var(--muted)}
+
+  header{border-bottom:1px solid var(--line); position:sticky; top:0; z-index:20;
+    background:color-mix(in srgb,var(--ink) 82%,transparent); backdrop-filter:blur(8px)}
+  .bar{max-width:1180px; margin-inline:auto; padding:.8rem clamp(1rem,4vw,2rem);
+    display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap}
+  .brand{display:flex; align-items:center; gap:.55rem; font-family:var(--font-mono); font-weight:700}
+  .rec{width:9px;height:9px;border-radius:50%;background:var(--accent)}
+  .presets{display:flex; gap:.4rem; flex-wrap:wrap}
+  .chip{font-family:var(--font-mono); font-size:.72rem; letter-spacing:.06em; text-transform:uppercase;
+    background:transparent; color:var(--muted); border:1px solid var(--line); border-radius:3px;
+    padding:.5rem .8rem; min-height:40px; cursor:pointer; transition:.18s}
+  .chip:hover{color:var(--text); border-color:var(--muted)}
+  .chip.on{color:#fff; background:var(--accent); border-color:var(--accent)}
+  :root[data-theme="light"] .chip.on, @media(prefers-color-scheme:light){ }
+  .chip[data-theme-toggle]{min-width:44px}
+
+  .wrap{max-width:1180px; margin-inline:auto; padding:clamp(1.2rem,4vw,2.2rem)}
+  .intro{max-width:60ch; margin-bottom:1.6rem}
+  .intro h1{font-family:var(--font-mono); font-weight:700; font-size:clamp(1.4rem,3vw,2rem); letter-spacing:-.03em}
+  .intro p{color:var(--muted); margin:.6rem 0 0; font-size:.95rem}
+
+  .app{display:grid; grid-template-columns:1fr 400px; gap:1.4rem; align-items:start}
+  @media (max-width:900px){ .app{grid-template-columns:1fr} }
+
+  /* results */
+  .results{grid-column:2; position:sticky; top:74px; display:flex; flex-direction:column; gap:1rem;
+    background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:1.3rem}
+  @media (max-width:900px){ .results{grid-column:1; position:static} }
+  .net-hero .label{margin-bottom:.3rem}
+  .net{font-family:var(--font-mono); font-weight:700; font-size:clamp(2.4rem,7vw,3.4rem);
+    letter-spacing:-.03em; font-variant-numeric:tabular-nums; line-height:1; transition:color .25s}
+  .net.pos{color:var(--good)} .net.neg{color:var(--warn)}
+  .net-sub{font-family:var(--font-mono); font-size:.8rem; color:var(--muted); margin-top:.4rem}
+  .tgt{display:flex; align-items:center; gap:.5rem; margin-top:.7rem; font-family:var(--font-mono); font-size:.76rem}
+  .tgt .pill{padding:.2rem .5rem; border-radius:20px; font-weight:600}
+  .pill.hit{background:color-mix(in srgb,var(--good) 22%,transparent); color:var(--good)}
+  .pill.miss{background:color-mix(in srgb,var(--warn) 20%,transparent); color:var(--warn)}
+  .prog{height:7px; border-radius:6px; background:var(--line); overflow:hidden; margin-top:.5rem}
+  .prog span{display:block; height:100%; background:var(--good); transition:width .3s var(--ease)}
+  .prog.under span{background:var(--warn)}
+
+  .mgrid{display:grid; grid-template-columns:1fr 1fr; gap:1px; background:var(--line); border:1px solid var(--line); border-radius:6px; overflow:hidden}
+  .m{background:var(--panel-2); padding:.85rem .9rem}
+  .m .k{font-family:var(--font-mono); font-size:.64rem; letter-spacing:.12em; text-transform:uppercase; color:var(--muted)}
+  .m .v{font-family:var(--font-mono); font-weight:700; font-size:1.15rem; font-variant-numeric:tabular-nums; margin-top:.2rem}
+
+  .stack .label{margin-bottom:.55rem}
+  .stackbar{display:flex; height:30px; border-radius:5px; overflow:hidden; border:1px solid var(--line)}
+  .stackbar i{display:block; height:100%; transition:flex-basis .3s var(--ease), width .3s var(--ease)}
+  .seg-p{background:var(--muted)} .seg-r{background:var(--accent)} .seg-a{background:var(--gold)}
+  .legend{display:flex; flex-direction:column; gap:.35rem; margin-top:.7rem; font-family:var(--font-mono); font-size:.76rem}
+  .legend div{display:flex; align-items:center; justify-content:space-between; gap:.6rem}
+  .legend .dot{width:9px;height:9px;border-radius:2px; display:inline-block; margin-right:.5rem}
+  .legend b{font-variant-numeric:tabular-nums}
+
+  /* controls */
+  .controls{grid-column:1; display:flex; flex-direction:column; gap:1.3rem}
+  .group{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:1.1rem 1.2rem}
+  .group > .label{display:block; margin-bottom:.9rem; color:var(--accent)}
+  .ctl{margin-bottom:1.05rem}
+  .ctl:last-child{margin-bottom:0}
+  .ctl .row{display:flex; align-items:baseline; justify-content:space-between; gap:1rem; margin-bottom:.4rem}
+  .ctl label{font-size:.9rem; color:var(--text)}
+  .ctl .val{font-family:var(--font-mono); font-weight:700; font-variant-numeric:tabular-nums; color:var(--text)}
+  .ctl .hint{font-family:var(--font-mono); font-size:.68rem; color:var(--muted); margin-top:.35rem; letter-spacing:.02em}
+  input[type=range]{width:100%; height:26px; accent-color:var(--accent); cursor:pointer; background:transparent}
+  input[type=range]:focus-visible{outline:2px solid var(--accent); outline-offset:4px; border-radius:4px}
+  .blended{font-family:var(--font-mono); font-size:.8rem; color:var(--muted); margin-top:.2rem}
+  .blended b{color:var(--accent)}
+
+  footer{max-width:1180px; margin:1.5rem auto 3rem; padding-inline:clamp(1.2rem,4vw,2.2rem)}
+  .note{font-family:var(--font-mono); font-size:.72rem; color:var(--muted); line-height:1.7; max-width:80ch}
+  .note b{color:var(--text)}
+  :focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  @media (prefers-reduced-motion:reduce){ *{transition:none!important} }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="bar">
+    <div class="brand"><span class="rec"></span>FLEET ECONOMICS</div>
+    <div class="presets">
+      <button class="chip" type="button" data-preset="cons">Conservative</button>
+      <button class="chip on" type="button" data-preset="base">Base</button>
+      <button class="chip" type="button" data-preset="up">Upside</button>
+      <button class="chip" type="button" id="themeBtn" data-theme-toggle aria-label="Toggle theme">◐</button>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="intro">
+    <h1>What the rack actually earns.</h1>
+    <p>Content arbitrage + formula-UGC, modeled honestly. Drag the dials. The truth this
+      surfaces: platform funds alone are thin — the number only works when you stack
+      reward programs and affiliate/brand on an owned audience.</p>
+  </div>
+
+  <div class="app">
+    <!-- RESULTS (first in DOM = top on mobile) -->
+    <section class="results" aria-label="Results">
+      <div class="net-hero">
+        <span class="label">Net profit / month</span>
+        <div class="net mono" id="oNet">$0</div>
+        <div class="net-sub" id="oAnnual">$0 / year</div>
+        <div class="tgt">
+          <span id="oTgtPill" class="pill miss">—</span>
+          <span class="mono" style="color:var(--muted)" id="oTgtTxt"></span>
+        </div>
+        <div class="prog" id="oProgWrap"><span id="oProg" style="width:0%"></span></div>
+      </div>
+
+      <div class="mgrid">
+        <div class="m"><div class="k">Gross / mo</div><div class="v mono" id="oGross">$0</div></div>
+        <div class="m"><div class="k">Opex / mo</div><div class="v mono" id="oOpex">$0</div></div>
+        <div class="m"><div class="k">Total views / mo</div><div class="v mono" id="oViews">0</div></div>
+        <div class="m"><div class="k">Capex payback</div><div class="v mono" id="oPay">—</div></div>
+      </div>
+
+      <div class="stack">
+        <span class="label">Where the gross comes from</span>
+        <div class="stackbar" id="oStack">
+          <i class="seg-p" id="segP"></i><i class="seg-r" id="segR"></i><i class="seg-a" id="segA"></i>
+        </div>
+        <div class="legend">
+          <div><span><span class="dot" style="background:var(--muted)"></span>Platform funds</span><b class="mono" id="lgP">$0</b></div>
+          <div><span><span class="dot" style="background:var(--accent)"></span>Reward programs</span><b class="mono" id="lgR">$0</b></div>
+          <div><span><span class="dot" style="background:var(--gold)"></span>Affiliate + brand</span><b class="mono" id="lgA">$0</b></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CONTROLS -->
+    <section class="controls" aria-label="Inputs">
+      <div class="group">
+        <span class="label">Fleet</span>
+        <div class="ctl">
+          <div class="row"><label for="acct">Active accounts</label><span class="val"><span id="vAcct">20</span></span></div>
+          <input type="range" id="acct" min="5" max="100" step="1" value="20">
+          <div class="hint">warmed, posting accounts — not nameplate</div>
+        </div>
+        <div class="ctl">
+          <div class="row"><label for="ppd">Posts / day / account</label><span class="val" id="vPpd">5</span></div>
+          <input type="range" id="ppd" min="1" max="12" step="1" value="5">
+          <div class="hint">human-paced; too high gets accounts throttled</div>
+        </div>
+        <div class="ctl">
+          <div class="row"><label for="churn">Monthly churn</label><span class="val"><span id="vChurn">25</span>%</span></div>
+          <input type="range" id="churn" min="0" max="50" step="1" value="25">
+          <div class="hint">accounts limited/banned per month — applied as an uptime drag</div>
+        </div>
+      </div>
+
+      <div class="group">
+        <span class="label">Reach</span>
+        <div class="ctl">
+          <div class="row"><label for="mvp">Mean views / post</label><span class="val" id="vMvp">10k</span></div>
+          <input type="range" id="mvp" min="500" max="50000" step="500" value="10000">
+          <div class="hint">MEAN, not median — dragged up by the occasional hit. This is the hit-rate dial.</div>
+        </div>
+      </div>
+
+      <div class="group">
+        <span class="label">Monetization stack &nbsp;·&nbsp; $ per 1M raw views</span>
+        <div class="ctl">
+          <div class="row"><label for="rpmP">Platform funds</label><span class="val" id="vRpmP">$220</span></div>
+          <input type="range" id="rpmP" min="0" max="600" step="10" value="220">
+          <div class="hint">TikTok Rewards + Shorts. Reliable, thin. Reality: ~$150–300.</div>
+        </div>
+        <div class="ctl">
+          <div class="row"><label for="rpmR">Reward programs / bounties</label><span class="val" id="vRpmR">$250</span></div>
+          <input type="range" id="rpmR" min="0" max="1500" step="10" value="250">
+          <div class="hint">Whop-style content rewards — budget-capped per campaign</div>
+        </div>
+        <div class="ctl">
+          <div class="row"><label for="rpmA">Affiliate + brand</label><span class="val" id="vRpmA">$130</span></div>
+          <input type="range" id="rpmA" min="0" max="2000" step="10" value="130">
+          <div class="hint">owned offer / deals — often the biggest, needs an audience</div>
+        </div>
+        <div class="blended">Blended RPM: <b id="vBlend">$600</b> / 1M views</div>
+      </div>
+
+      <div class="group">
+        <span class="label">Costs</span>
+        <div class="ctl">
+          <div class="row"><label for="cpa">Cost / account / mo</label><span class="val" id="vCpa">$60</span></div>
+          <input type="range" id="cpa" min="0" max="200" step="5" value="60">
+          <div class="hint">proxy + overhead per provisioned account</div>
+        </div>
+        <div class="ctl">
+          <div class="row"><label for="cpp">Cost / post</label><span class="val" id="vCpp">$0.10</span></div>
+          <input type="range" id="cpp" min="0" max="1" step="0.01" value="0.10">
+          <div class="hint">AI + generative per produced clip</div>
+        </div>
+        <div class="ctl">
+          <div class="row"><label for="fix">Fixed opex / mo</label><span class="val" id="vFix">$500</span></div>
+          <input type="range" id="fix" min="0" max="5000" step="100" value="500">
+        </div>
+        <div class="ctl">
+          <div class="row"><label for="capex">Rack capex (one-time)</label><span class="val" id="vCapex">$3,000</span></div>
+          <input type="range" id="capex" min="0" max="10000" step="500" value="3000">
+        </div>
+        <div class="ctl">
+          <div class="row"><label for="target">Monthly target</label><span class="val" id="vTarget">$20,000</span></div>
+          <input type="range" id="target" min="5000" max="100000" step="1000" value="20000">
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<footer>
+  <p class="note"><b>Read this before you trust the number.</b> The two dials that move
+    everything are <b>mean views/account</b> (a content-quality / hit-rate function — where
+    proven-formula content earns its keep) and <b>blended RPM</b> (a stacking function, not a
+    platform function). Churn is modeled as an uptime drag (effective accounts = accounts ×
+    (1 − churn/2)); months 1–2 are a warm-up ramp, not steady state. The honest spread on a
+    real fleet is roughly ±10× until you run the two-week probe and replace assumptions with
+    measured hit-rate and survivability. Numbers are a lens, not a promise.</p>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+  var $=function(id){return document.getElementById(id);};
+  var ids=["acct","ppd","churn","mvp","rpmP","rpmR","rpmA","cpa","cpp","fix","capex","target"];
+
+  var presets={
+    cons:{acct:20,ppd:5,churn:30,mvp:5000, rpmP:180,rpmR:90,rpmA:30, cpa:60,cpp:0.10,fix:500,capex:3000,target:20000},
+    base:{acct:20,ppd:5,churn:25,mvp:10000,rpmP:220,rpmR:250,rpmA:130,cpa:60,cpp:0.10,fix:500,capex:3000,target:20000},
+    up:  {acct:48,ppd:6,churn:20,mvp:20000,rpmP:300,rpmR:500,rpmA:400,cpa:60,cpp:0.10,fix:500,capex:3000,target:20000}
+  };
+
+  function usd(n){ var s=n<0?"-":""; n=Math.abs(Math.round(n)); return s+"$"+n.toLocaleString("en-US"); }
+  function usdC(n){ n=Math.round(n); if(Math.abs(n)>=1000) return "$"+(n/1000).toFixed(n%1000?1:0)+"k"; return "$"+n; }
+  function views(v){ if(v>=1e6) return (v/1e6).toFixed(1)+"M"; if(v>=1e3) return Math.round(v/1e3)+"k"; return Math.round(v).toString(); }
+
+  function recompute(){
+    var acct=+$("acct").value, ppd=+$("ppd").value, churn=+$("churn").value/100,
+        mvp=+$("mvp").value, rpmP=+$("rpmP").value, rpmR=+$("rpmR").value, rpmA=+$("rpmA").value,
+        cpa=+$("cpa").value, cpp=+$("cpp").value, fix=+$("fix").value, capex=+$("capex").value, target=+$("target").value;
+
+    // live readouts
+    $("vAcct").textContent=acct; $("vPpd").textContent=ppd; $("vChurn").textContent=(churn*100).toFixed(0);
+    $("vMvp").textContent=views(mvp); $("vRpmP").textContent="$"+rpmP; $("vRpmR").textContent="$"+rpmR; $("vRpmA").textContent="$"+rpmA;
+    $("vCpa").textContent="$"+cpa; $("vCpp").textContent="$"+cpp.toFixed(2); $("vFix").textContent=usd(fix);
+    $("vCapex").textContent=usd(capex); $("vTarget").textContent=usd(target);
+    var blended=rpmP+rpmR+rpmA; $("vBlend").textContent="$"+blended;
+
+    var effAcct=acct*(1-churn/2);
+    var viewsPerAcct=ppd*30*mvp;
+    var totalViews=effAcct*viewsPerAcct;
+    var mv=totalViews/1e6;
+    var gP=mv*rpmP, gR=mv*rpmR, gA=mv*rpmA, gross=gP+gR+gA;
+    var postsMo=effAcct*ppd*30;
+    var opex=acct*cpa + postsMo*cpp + fix;
+    var net=gross-opex;
+
+    $("oGross").textContent=usd(gross);
+    $("oOpex").textContent=usd(opex);
+    $("oViews").textContent=views(totalViews);
+    $("oNet").textContent=usd(net);
+    $("oNet").className="net mono "+(net>=0?"pos":"neg");
+    $("oAnnual").textContent=usd(net*12)+" / year  ·  "+Math.round(effAcct)+" effective accts";
+    $("oPay").textContent = net>0 ? (capex/net<1? "<1 mo" : (capex/net).toFixed(1)+" mo") : "—";
+
+    // target
+    var pct=target>0?Math.max(0,Math.min(100,net/target*100)):0;
+    var hit=net>=target;
+    $("oProg").style.width=pct+"%";
+    $("oProgWrap").className="prog"+(hit?"":" under");
+    $("oTgtPill").className="pill "+(hit?"hit":"miss");
+    $("oTgtPill").textContent = hit? "TARGET HIT" : "BELOW TARGET";
+    $("oTgtTxt").textContent = (hit? "+"+usd(net-target) : usd(target-net)+" to go")+" vs "+usdC(target);
+
+    // stack bar + legend
+    var tot=gross>0?gross:1;
+    segW("segP",gP/tot); segW("segR",gR/tot); segW("segA",gA/tot);
+    $("lgP").textContent=usd(gP); $("lgR").textContent=usd(gR); $("lgA").textContent=usd(gA);
+  }
+  function segW(id,frac){ $(id).style.flexBasis=(frac*100)+"%"; }
+
+  function applyPreset(name){
+    var p=presets[name]; if(!p) return;
+    ids.forEach(function(k){ if(k in p) $(k).value=p[k]; });
+    document.querySelectorAll(".chip[data-preset]").forEach(function(c){ c.classList.toggle("on", c.dataset.preset===name); });
+    recompute();
+  }
+
+  ids.forEach(function(k){ $(k).addEventListener("input", function(){
+    document.querySelectorAll(".chip[data-preset]").forEach(function(c){ c.classList.remove("on"); });
+    recompute();
+  }); });
+  document.querySelectorAll(".chip[data-preset]").forEach(function(c){
+    c.addEventListener("click", function(){ applyPreset(c.dataset.preset); });
+  });
+  $("themeBtn").addEventListener("click", function(){
+    var r=document.documentElement, cur=r.getAttribute("data-theme");
+    if(!cur) cur=window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";
+    r.setAttribute("data-theme", cur==="dark"?"light":"dark");
+  });
+
+  recompute();
+})();
+</script>
+
+</body>
+</html>
