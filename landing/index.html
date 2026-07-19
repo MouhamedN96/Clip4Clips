@@ -75,9 +75,11 @@
   .toggle{
     font-family:var(--font-mono); font-size:.72rem; letter-spacing:.1em; text-transform:uppercase;
     background:transparent; color:var(--muted); border:1px solid var(--line); border-radius:2px;
-    padding:.35rem .6rem; cursor:pointer; transition:border-color .2s,color .2s;
+    padding:.4rem .7rem; min-height:38px; display:inline-flex; align-items:center;
+    cursor:pointer; transition:border-color .2s,color .2s;
   }
   .toggle:hover{color:var(--text); border-color:var(--muted)}
+  @media (pointer:coarse){ .toggle{min-height:44px; padding-inline:.95rem} }
   @media (max-width:760px){ .navlinks{display:none} }
 
   /* ---------- hero ---------- */
@@ -120,7 +122,7 @@
   .ticker:hover .track{animation-play-state:paused}
 
   /* ---------- sections ---------- */
-  section{padding-block:clamp(4.5rem,10vw,8rem)}
+  section{padding-block:clamp(4.5rem,10vw,8rem); scroll-margin-top:72px}
   .sec-head{max-width:60ch}
   .sec-head h2{font-family:var(--font-mono); font-weight:700; letter-spacing:-0.035em; line-height:1.07; font-size:clamp(1.55rem,3.5vw,2.65rem); margin-top:.9rem}
   .sec-head p{margin-top:1rem; color:var(--muted); max-width:56ch}
@@ -155,7 +157,7 @@
   .tile .cap{font-weight:800; font-size:.98rem; line-height:1.12; color:#fff; text-shadow:0 1px 10px rgba(0,0,0,.5)}
   .tile .cap u{text-decoration:none; background:var(--accent); color:#fff; padding:0 .15em; box-decoration-break:clone; -webkit-box-decoration-break:clone; border-radius:2px}
   .tile .foot{display:flex; align-items:center; justify-content:space-between; margin-top:.4rem}
-  .tile .plat{font-family:var(--font-mono); font-size:.6rem; letter-spacing:.1em; text-transform:uppercase; color:rgba(255,255,255,.9)}
+  .tile .plat{font-family:var(--font-mono); font-size:.66rem; letter-spacing:.08em; text-transform:uppercase; color:rgba(255,255,255,.92)}
   .tile .views{font-family:var(--font-mono); font-size:.68rem; color:#fff; font-weight:600}
   .play{position:absolute; inset:0; z-index:3; display:grid; place-items:center; opacity:0; transition:opacity .2s}
   .tile:hover .play{opacity:1}
