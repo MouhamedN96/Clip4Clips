@@ -20,14 +20,27 @@ Open `index.html` and edit directly — it's one file. Common changes:
 - Gallery demos: the `clips` array in the `<script>` (caption, platform, views).
 - Ticker copy: the `.ticker .track` spans (keep the two spans identical).
 
-## Deploy on Coolify
+## Deploy — GitHub Pages (live)
 
-The box already runs Coolify, which owns 80/443 and does TLS. Add this as its own
-resource so it never collides with the private API.
+This is the deploy in use. `.github/workflows/deploy-landing.yml` publishes this
+folder to GitHub Pages on every push to `main` that touches `landing/`. Edit
+`index.html`, push, and it redeploys automatically.
 
-1. Coolify → New Resource → your Git repo `MouhamedN96/Clip4Clips`, branch `main`.
-2. Build pack: **Dockerfile**, base directory `landing/` (uses `landing/Dockerfile`).
-3. Set the domain (Porkbun) on the resource → Coolify provisions Let's Encrypt TLS.
-4. Porkbun: an **A record** for the domain → the box's public IP.
+- Live: https://mouhamedn96.github.io/Clip4Clips/
+- Free, HTTPS-enforced, on GitHub's CDN. Off the VPS entirely.
 
-Deploy. The site is public; the ClipForge API stays private on the tailnet.
+### Custom (Porkbun) domain
+
+1. Add a `CNAME` file in this folder containing just the domain (e.g. `clip4clicks.com`).
+2. Porkbun DNS:
+   - apex (`clip4clicks.com`): four **A** records → `185.199.108.153`,
+     `185.199.109.153`, `185.199.110.153`, `185.199.111.153`.
+   - or a subdomain (`www`): one **CNAME** → `mouhamedn96.github.io`.
+3. Push. GitHub verifies the domain and issues TLS.
+
+## Alternative — Coolify (Dockerfile)
+
+`landing/Dockerfile` (nginx static) is kept for hosting on the box's Coolify
+instead: New Resource → repo `MouhamedN96/Clip4Clips`, build pack **Dockerfile**,
+base directory `landing/`, set the domain, Coolify does TLS. Use this only if you
+want it on the VPS; GitHub Pages is simpler and keeps load off the box.
