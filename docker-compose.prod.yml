@@ -38,12 +38,22 @@ services:
       - redis
     networks:
       - clipforge-network
+      - ${TRAEFIK_NETWORK:-traefik-proxy}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
+    # ── Traefik auto-routing (activated when CLIPFORGE_DOMAIN is set) ──
+    labels:
+      - "traefik.enable=${TRAEFIK_ENABLE:-false}"
+      - "traefik.http.routers.clipforge.rule=Host(`${CLIPFORGE_DOMAIN:-clipforge.local}`)"
+      - "traefik.http.routers.clipforge.entrypoints=${TRAEFIK_ENTRYPOINTS:-web,websecure}"
+      - "traefik.http.routers.clipforge.tls=${TRAEFIK_TLS:-true}"
+      - "traefik.http.routers.clipforge.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}"
+      - "traefik.http.services.clipforge.loadbalancer.server.port=3000"
+      - "traefik.http.routers.clipforge.middlewares=${TRAEFIK_MIDDLEWARES:-}"
 
   clipforge-worker:
     build:
