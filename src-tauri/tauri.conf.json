@@ -1,0 +1,61 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Clip4Clicks",
+  "version": "1.0.0",
+  "identifier": "com.clip4clicks.app",
+  "build": {
+    "frontendDist": "../src-tauri/frontend",
+    "devUrl": "http://localhost:5173"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Clip4Clicks",
+        "width": 1400,
+        "height": 900,
+        "minWidth": 900,
+        "minHeight": 600,
+        "resizable": true,
+        "decorations": true,
+        "transparent": false,
+        "theme": "dark"
+      }
+    ],
+    "security": {
+      "csp": null
+    },
+    "trayIcon": {
+      "iconPath": "icons/icon.png",
+      "tooltip": "Clip4Clicks"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["deb", "msi", "app", "apk"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": [
+      "sidecars/ffmpeg",
+      "sidecars/yt-dlp"
+    ],
+    "externalBin": [],
+    "copyright": "© 2026 Clip4Clicks",
+    "category": "Productivity",
+    "shortDescription": "Autonomous Content Acquisition & Monetization",
+    "longDescription": "Clip4Clicks — autonomous clipping, review, and posting for content creators. Offline-first, local rendering, white-label ready."
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://github.com/MouhamedN96/Clip4Clips/releases/latest/download/latest.json"
+      ],
+      "pubkey": ""
+    }
+  }
+}

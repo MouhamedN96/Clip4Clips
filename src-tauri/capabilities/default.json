@@ -1,0 +1,15 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "identifier": "default",
+  "description": "Clip4Clicks default permissions",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:allow-open",
+    "updater:default",
+    "store:default",
+    "http:default",
+    "notification:default",
+    "fs:default"
+  ]
+}

@@ -1,0 +1,6 @@
+/target
+/sidecars/ffmpeg
+/sidecars/yt-dlp
+/sidecars/*.exe
+*.db
+.env

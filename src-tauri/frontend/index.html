@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Clip4Clicks</title>
+  <style>
+    body { background: #0a0a12; color: #e6e6ef; font-family: system-ui; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+    .loading { text-align: center; }
+    .logo { font-size: 32px; font-weight: 800; letter-spacing: 2px; color: #ff6b35; }
+    .sub { color: #6a6a82; margin-top: 8px; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="loading">
+    <div class="logo">▲ CLIP4CLICKS</div>
+    <div class="sub">Loading dashboard...</div>
+  </div>
+  <script>
+    // Will be replaced with the real frontend during build
+    // For now, invoke Tauri commands to test the bridge
+    if (window.__TAURI__) {
+      document.querySelector('.sub').textContent = 'Tauri bridge active';
+    }
+  </script>
+</body>
+</html>
