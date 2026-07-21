@@ -1,4 +1,4 @@
-# ClipForge VPS Deployment Package
+# Clip4Clicks VPS Deployment Package
 
 **Autonomous Content Acquisition & Monetization Engine**
 
