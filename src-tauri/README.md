@@ -65,9 +65,10 @@ src-tauri/
 cargo check --manifest-path src-tauri/Cargo.toml
 cargo test --manifest-path src-tauri/Cargo.toml
 cargo run --manifest-path src-tauri/Cargo.toml
-
-# The future dashboard dev server will run on http://localhost:5173.
 ```
+
+Development loads the checked-in `frontend/index.html` directly; it does not
+require a separate frontend server.
 
 `bundle.active` is currently `false`, so this alpha does not produce an MSI or
 other installer. Release packaging will be enabled after signed release assets

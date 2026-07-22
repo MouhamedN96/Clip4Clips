@@ -7,7 +7,7 @@ license = "MIT"
 # The GitHub repository keeps its legacy Clip4Clips slug; the product is Clip4Clicks.
 repository = "https://github.com/MouhamedN96/Clip4Clips"
 edition = "2021"
-rust-version = "1.70"
+rust-version = "1.88"
 
 [lib]
 name = "clip4clicks_lib"
@@ -33,6 +33,7 @@ which = "6.0"
 chrono = { version = "0.4", features = ["serde"] }
 log = "0.4"
 env_logger = "0.11"
+uuid = { version = "1.0", features = ["v4"] }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

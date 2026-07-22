@@ -4,8 +4,7 @@
   "version": "1.0.0",
   "identifier": "com.clip4clicks.app",
   "build": {
-    "frontendDist": "../src-tauri/frontend",
-    "devUrl": "http://localhost:5173"
+    "frontendDist": "../src-tauri/frontend"
   },
   "app": {
     "windows": [
