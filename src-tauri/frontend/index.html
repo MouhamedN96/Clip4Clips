@@ -1,26 +1,449 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Clip4Clicks</title>
-  <style>
-    body { background: #0a0a12; color: #e6e6ef; font-family: system-ui; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-    .loading { text-align: center; }
-    .logo { font-size: 32px; font-weight: 800; letter-spacing: 2px; color: #ff6b35; }
-    .sub { color: #6a6a82; margin-top: 8px; font-size: 14px; }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clip4Clicks — Operator</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  :root{
+    --ink:#14110F; --panel:#1C1815; --panel-2:#241F1B; --raise:#2B241F; --line:#35302B;
+    --text:#ECE4DB; --muted:#9C9086; --faint:#6E645A; --accent:#FF3B2F; --accent-dim:#C22A22;
+    --good:#4FB65E; --warn:#E3A02E; --gold:#E3B24C;
+    --font-body:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --font-mono:ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace;
+  }
+  html,body{height:100%}
+  body{margin:0; background:var(--ink); color:var(--text); font-family:var(--font-body);
+    font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased; overflow:hidden}
+  .mono{font-family:var(--font-mono); font-variant-numeric:tabular-nums}
+  .lbl{font-family:var(--font-mono); font-size:.66rem; letter-spacing:.16em; text-transform:uppercase; color:var(--muted)}
+  button{font-family:inherit; cursor:pointer}
+  :focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:3px}
+
+  .app{display:grid; grid-template-columns:236px 1fr; height:100vh}
+
+  /* sidebar */
+  .side{background:var(--panel); border-right:1px solid var(--line); display:flex; flex-direction:column; padding:1.1rem .9rem}
+  .brand{display:flex; align-items:center; gap:.55rem; font-family:var(--font-mono); font-weight:700; letter-spacing:.02em; padding:.2rem .4rem 1.1rem}
+  .brand .rec{width:9px;height:9px;border-radius:50%;background:var(--accent); box-shadow:0 0 10px var(--accent)}
+  .brand small{display:block; font-size:.6rem; letter-spacing:.18em; color:var(--muted); font-weight:500; margin-top:.15rem}
+  nav{display:flex; flex-direction:column; gap:.2rem; margin-top:.4rem}
+  .navbtn{display:flex; align-items:center; gap:.7rem; width:100%; text-align:left; background:transparent; border:0;
+    color:var(--muted); padding:.6rem .7rem; border-radius:6px; font-size:.92rem; transition:.15s}
+  .navbtn:hover{background:var(--panel-2); color:var(--text)}
+  .navbtn.on{background:var(--panel-2); color:var(--text)}
+  .navbtn.on::before{content:""; position:absolute; left:0; width:3px; height:20px; background:var(--accent); border-radius:2px; margin-left:-.9rem}
+  .navbtn{position:relative}
+  .navbtn .ico{width:16px; height:16px; flex:0 0 16px; color:currentColor}
+  .navbtn .badge{margin-left:auto; font-family:var(--font-mono); font-size:.68rem; background:var(--raise); color:var(--muted); border-radius:20px; padding:.05rem .45rem; min-width:20px; text-align:center}
+  .navbtn.on .badge, .navbtn:hover .badge{color:var(--text)}
+  .side-foot{margin-top:auto; padding-top:1rem; border-top:1px solid var(--line)}
+  .vps{display:flex; align-items:center; gap:.5rem; font-family:var(--font-mono); font-size:.72rem; color:var(--muted); padding:.4rem}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--faint); flex:0 0 8px}
+  .dot.up{background:var(--good); box-shadow:0 0 8px var(--good)} .dot.down{background:var(--warn)}
+  .syncbtn{width:100%; margin-top:.5rem; background:var(--panel-2); border:1px solid var(--line); color:var(--text);
+    border-radius:6px; padding:.55rem; font-family:var(--font-mono); font-size:.74rem; letter-spacing:.05em; transition:.15s}
+  .syncbtn:hover{border-color:var(--muted)}
+
+  /* main */
+  .main{display:flex; flex-direction:column; min-width:0; height:100vh}
+  .topbar{display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:1rem 1.6rem; border-bottom:1px solid var(--line)}
+  .topbar h1{margin:0; font-family:var(--font-mono); font-weight:700; font-size:1.15rem; letter-spacing:-.02em}
+  .topbar .sub{color:var(--muted); font-size:.82rem; margin-top:.15rem}
+  .demo{font-family:var(--font-mono); font-size:.66rem; letter-spacing:.1em; text-transform:uppercase; color:var(--warn);
+    border:1px solid color-mix(in srgb,var(--warn) 40%,var(--line)); border-radius:20px; padding:.25rem .6rem}
+  .content{flex:1; overflow-y:auto; padding:1.6rem}
+  .section{display:none} .section.on{display:block}
+
+  /* setup banner */
+  .banner{display:none; align-items:center; gap:.8rem; background:color-mix(in srgb,var(--accent) 12%,var(--panel));
+    border:1px solid color-mix(in srgb,var(--accent) 35%,var(--line)); border-radius:8px; padding:.8rem 1rem; margin-bottom:1.4rem}
+  .banner.show{display:flex}
+  .banner p{margin:0; font-size:.9rem; color:var(--text)}
+  .banner button{margin-left:auto; background:var(--accent); color:#fff; border:0; border-radius:5px; padding:.5rem .9rem; font-size:.82rem; font-weight:600}
+
+  /* tabs */
+  .tabs{display:flex; gap:.4rem; margin-bottom:1.3rem; border-bottom:1px solid var(--line)}
+  .tab{background:transparent; border:0; color:var(--muted); padding:.6rem .3rem; margin-right:.9rem; font-size:.9rem;
+    border-bottom:2px solid transparent; margin-bottom:-1px; transition:.15s}
+  .tab.on{color:var(--text); border-bottom-color:var(--accent)}
+  .tab:hover{color:var(--text)}
+  .tab .n{font-family:var(--font-mono); font-size:.72rem; color:var(--faint); margin-left:.3rem}
+  .tab.on .n{color:var(--accent)}
+
+  /* clip cards */
+  .clips{display:flex; flex-direction:column; gap:.8rem}
+  .clip{display:grid; grid-template-columns:96px 1fr auto; gap:1rem; background:var(--panel); border:1px solid var(--line);
+    border-radius:8px; padding:.8rem; align-items:center}
+  .thumb{width:96px; aspect-ratio:9/16; border-radius:5px; overflow:hidden; position:relative; border:1px solid var(--line)}
+  .thumb .d{position:absolute; bottom:4px; right:4px; font-family:var(--font-mono); font-size:.6rem; background:rgba(0,0,0,.55);
+    color:#fff; padding:.05rem .3rem; border-radius:2px}
+  .clip .body{min-width:0}
+  .clip .title{font-weight:600; font-size:.98rem; line-height:1.25; overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical}
+  .clip .meta{font-family:var(--font-mono); font-size:.72rem; color:var(--muted); margin-top:.35rem; display:flex; gap:.7rem; flex-wrap:wrap}
+  .plats{display:flex; gap:.4rem; margin-top:.6rem; flex-wrap:wrap}
+  .pchip{font-family:var(--font-mono); font-size:.68rem; letter-spacing:.04em; text-transform:uppercase; color:var(--muted);
+    background:var(--panel-2); border:1px solid var(--line); border-radius:20px; padding:.25rem .6rem; cursor:pointer; transition:.15s}
+  .pchip.on{color:#fff; background:var(--accent-dim); border-color:var(--accent)}
+  .clip .actions{display:flex; flex-direction:column; gap:.4rem; align-items:stretch; min-width:120px}
+  .btn{border:0; border-radius:6px; padding:.55rem .8rem; font-size:.82rem; font-weight:600; transition:.15s; white-space:nowrap}
+  .btn-approve{background:var(--accent); color:#fff} .btn-approve:hover{background:var(--accent-dim)}
+  .btn-reject{background:transparent; color:var(--muted); border:1px solid var(--line)} .btn-reject:hover{color:var(--text); border-color:var(--muted)}
+  .status-chip{font-family:var(--font-mono); font-size:.7rem; letter-spacing:.06em; text-transform:uppercase; padding:.3rem .6rem; border-radius:20px; align-self:center}
+  .st-approved{color:var(--good); background:color-mix(in srgb,var(--good) 16%,transparent)}
+  .st-posted{color:var(--gold); background:color-mix(in srgb,var(--gold) 16%,transparent)}
+  .empty{color:var(--muted); text-align:center; padding:3rem 1rem; font-size:.92rem}
+  .empty .lbl{display:block; margin-bottom:.5rem; color:var(--faint)}
+
+  /* produce */
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:1.2rem}
+  .card + .card{margin-top:1.2rem}
+  .field{display:flex; flex-direction:column; gap:.4rem; margin-bottom:1rem}
+  .field label{font-size:.85rem; color:var(--text)}
+  .field input,.field select{font-family:inherit; font-size:.9rem; background:var(--ink); color:var(--text);
+    border:1px solid var(--line); border-radius:6px; padding:.7rem .8rem}
+  .field input:focus{border-color:var(--accent)}
+  .field .hint{font-family:var(--font-mono); font-size:.68rem; color:var(--faint)}
+  .row-inline{display:flex; gap:.8rem; align-items:end}
+  .row-inline .field{flex:1; margin-bottom:0}
+  .btn-primary{background:var(--accent); color:#fff}
+  .btn-ghost{background:var(--panel-2); color:var(--text); border:1px solid var(--line)}
+  .toggle-row{display:flex; align-items:center; justify-content:space-between; padding:.7rem 0; border-top:1px solid var(--line)}
+  .toggle-row:first-of-type{border-top:0}
+  .toggle-row .t{font-size:.9rem} .toggle-row .h{font-family:var(--font-mono); font-size:.68rem; color:var(--faint); margin-top:.15rem}
+  .sw{position:relative; width:42px; height:24px; flex:0 0 42px}
+  .sw input{opacity:0; width:100%; height:100%; margin:0; cursor:pointer}
+  .sw .track{position:absolute; inset:0; background:var(--raise); border-radius:20px; transition:.15s; pointer-events:none}
+  .sw .knob{position:absolute; top:3px; left:3px; width:18px; height:18px; background:var(--muted); border-radius:50%; transition:.15s; pointer-events:none}
+  .sw input:checked ~ .track{background:color-mix(in srgb,var(--accent) 55%,var(--raise))}
+  .sw input:checked ~ .knob{left:21px; background:#fff}
+
+  /* analytics */
+  .stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:1px; background:var(--line); border:1px solid var(--line); border-radius:8px; overflow:hidden}
+  .stat{background:var(--panel); padding:1.3rem 1.1rem}
+  .stat .n{font-family:var(--font-mono); font-weight:700; font-size:2rem; letter-spacing:-.02em}
+  .stat .n.acc{color:var(--accent)}
+  .stat .l{font-family:var(--font-mono); font-size:.66rem; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); margin-top:.4rem}
+
+  /* produce queue list */
+  .qrow{display:flex; align-items:center; gap:.9rem; padding:.7rem 0; border-top:1px solid var(--line)}
+  .qrow .qt{flex:1; min-width:0; font-size:.9rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .qrow .qs{font-family:var(--font-mono); font-size:.68rem; color:var(--muted); text-transform:uppercase; letter-spacing:.06em}
+
+  /* toast */
+  #toast{position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(20px); opacity:0;
+    background:var(--panel-2); border:1px solid var(--line); border-radius:8px; padding:.7rem 1.1rem; font-size:.88rem;
+    box-shadow:0 12px 40px -12px rgba(0,0,0,.6); transition:.25s; z-index:50; max-width:80vw}
+  #toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+  #toast.err{border-color:color-mix(in srgb,var(--warn) 50%,var(--line))}
+  #toast b{color:var(--accent)}
+
+  .btn-approve:disabled,.btn:disabled{opacity:.5; cursor:default}
+</style>
 </head>
 <body>
-  <div class="loading">
-    <div class="logo">▲ CLIP4CLICKS</div>
-    <div class="sub">Loading dashboard...</div>
+
+<div class="app">
+  <aside class="side">
+    <div class="brand"><span class="rec"></span><div>CLIP4CLICKS<small id="brandSub">OPERATOR</small></div></div>
+    <nav id="nav">
+      <button class="navbtn on" data-sec="review" type="button">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        Review <span class="badge" id="bReview">0</span>
+      </button>
+      <button class="navbtn" data-sec="produce" type="button">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Produce
+      </button>
+      <button class="navbtn" data-sec="analytics" type="button">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><rect x="7" y="10" width="3" height="7"/><rect x="12" y="6" width="3" height="11"/><rect x="17" y="13" width="3" height="4"/></svg>
+        Analytics
+      </button>
+      <button class="navbtn" data-sec="settings" type="button">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        Settings
+      </button>
+    </nav>
+    <div class="side-foot">
+      <div class="vps"><span class="dot" id="vpsDot"></span><span id="vpsLabel">Checking VPS…</span></div>
+      <button class="syncbtn" id="syncBtn" type="button">↻ Sync with VPS</button>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div><h1 id="secTitle">Review queue</h1><div class="sub" id="secSub">Approve or reject produced clips. Nothing posts without your yes.</div></div>
+      <span class="demo" id="demoBadge" style="display:none">Demo · no backend</span>
+    </div>
+    <div class="content">
+      <div class="banner" id="banner">
+        <p><b>Welcome.</b> Finish setup so the operator can reach your fleet: set the VPS URL and API key.</p>
+        <button type="button" id="bannerGo">Open settings</button>
+      </div>
+
+      <!-- REVIEW -->
+      <section class="section on" id="sec-review">
+        <div class="tabs" id="revTabs">
+          <button class="tab on" data-tab="pending" type="button">Pending <span class="n" id="tPending">0</span></button>
+          <button class="tab" data-tab="approved" type="button">Approved <span class="n" id="tApproved">0</span></button>
+          <button class="tab" data-tab="posted" type="button">Posted <span class="n" id="tPosted">0</span></button>
+        </div>
+        <div class="clips" id="clipList"></div>
+      </section>
+
+      <!-- PRODUCE -->
+      <section class="section" id="sec-produce">
+        <div class="card">
+          <span class="lbl">Queue a source</span>
+          <div class="row-inline" style="margin-top:.9rem">
+            <div class="field"><label for="srcUrl">Source URL</label>
+              <input id="srcUrl" type="url" placeholder="https://twitch.tv/videos/… or a YouTube VOD"></div>
+            <div class="field" style="max-width:220px"><label for="srcTitle">Title (optional)</label>
+              <input id="srcTitle" type="text" placeholder="auto from source"></div>
+            <button class="btn btn-primary" id="queueBtn" type="button" style="height:42px">Queue</button>
+          </div>
+          <div class="field" style="margin-top:.2rem"><span class="hint">Queued sources render locally (yt-dlp + ffmpeg → vertical 1080×1920), then land in Review.</span></div>
+        </div>
+        <div class="card">
+          <span class="lbl">Local render queue</span>
+          <div id="renderList" style="margin-top:.6rem"></div>
+        </div>
+      </section>
+
+      <!-- ANALYTICS -->
+      <section class="section" id="sec-analytics">
+        <div class="stats" id="statGrid"></div>
+      </section>
+
+      <!-- SETTINGS -->
+      <section class="section" id="sec-settings">
+        <div class="card" style="max-width:560px">
+          <span class="lbl">Connection</span>
+          <div class="field" style="margin-top:.9rem"><label for="setUrl">VPS API URL</label>
+            <input id="setUrl" type="text" placeholder="http://100.x.x.x:3000">
+            <span class="hint">Your ClipForge control plane (tailnet IP recommended).</span></div>
+          <div class="field"><label for="setKey">API key</label>
+            <input id="setKey" type="password" placeholder="API_SECRET from config/.env"></div>
+          <div class="field"><label for="setBrand">Brand name</label>
+            <input id="setBrand" type="text" placeholder="Clip4Clicks"></div>
+          <div class="toggle-row"><div><div class="t">Render locally</div><div class="h">use this machine's ffmpeg + yt-dlp</div></div>
+            <label class="sw"><input type="checkbox" id="setRender"><span class="track"></span><span class="knob"></span></label></div>
+          <div class="toggle-row"><div><div class="t">Auto-sync</div><div class="h">pull the review queue every 60s</div></div>
+            <label class="sw"><input type="checkbox" id="setAuto"><span class="track"></span><span class="knob"></span></label></div>
+          <div style="display:flex; gap:.6rem; margin-top:1.2rem">
+            <button class="btn btn-primary" id="saveBtn" type="button">Save settings</button>
+            <button class="btn btn-ghost" id="checkBtn" type="button">Check VPS</button>
+          </div>
+        </div>
+        <div class="card" style="max-width:560px">
+          <span class="lbl">Onboarding · up and go</span>
+          <ol style="margin:.8rem 0 0; padding-left:1.2rem; color:var(--muted); font-size:.9rem; line-height:1.9">
+            <li>Paste the <b style="color:var(--text)">VPS URL</b> + <b style="color:var(--text)">API key</b> above, hit <b style="color:var(--text)">Check VPS</b>.</li>
+            <li>Hit <b style="color:var(--text)">Sync with VPS</b> (left) to pull the review queue.</li>
+            <li>Work the <b style="color:var(--text)">Review</b> tab: pick platforms, Approve or Reject. The farm posts approved clips.</li>
+          </ol>
+        </div>
+      </section>
+    </div>
   </div>
-  <script>
-    // Will be replaced with the real frontend during build
-    // For now, invoke Tauri commands to test the bridge
-    if (window.__TAURI__) {
-      document.querySelector('.sub').textContent = 'Tauri bridge active';
+</div>
+<div id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+  var T = window.__TAURI__;
+  var _invoke = (T && T.core && typeof T.core.invoke==="function") ? T.core.invoke.bind(T.core)
+              : (T && typeof T.invoke==="function") ? T.invoke.bind(T) : null;
+  var LIVE = !!_invoke;
+  var $ = function(id){return document.getElementById(id);};
+
+  // ---- mock backend (preview / no-Tauri) ----
+  var mockClips = {
+    pending: [
+      {id:"c1", title:"When your duo ints but you still clutch the 1v3", source_url:"https://twitch.tv/videos/2213", status:"pending_review", duration:31, platforms:["tiktok"], created_at:"2026-07-22"},
+      {id:"c2", title:"The 12-hour brisket nobody believes is real", source_url:"https://youtube.com/watch?v=abc", status:"pending_review", duration:24, platforms:["tiktok","instagram"], created_at:"2026-07-22"},
+      {id:"c3", title:"He said the quiet part out loud on the pod", source_url:"https://youtube.com/watch?v=xyz", status:"pending_review", duration:41, platforms:["youtube"], created_at:"2026-07-22"}
+    ],
+    approved:[{id:"c4", title:"POV: your last set of the year", source_url:"https://tiktok.com/@x", status:"approved", duration:18, platforms:["tiktok"], created_at:"2026-07-21"}],
+    posted:[{id:"c5", title:"The road that doesn't end", source_url:"https://youtube.com/watch?v=q", status:"posted", duration:22, platforms:["tiktok","youtube"], created_at:"2026-07-20"}]
+  };
+  var mockSettings = {vps_url:"http://100.121.164.39:3000", api_key:"", brand_name:"Clip4Clicks", render_local:true, auto_sync:true};
+  function mock(cmd,args){
+    switch(cmd){
+      case "get_review_queue": return Promise.resolve(JSON.parse(JSON.stringify(mockClips)));
+      case "get_analytics": return Promise.resolve({total_clips:37, approved:mockClips.approved.length, posted:12, pending:mockClips.pending.length, today_count:5});
+      case "get_settings": return Promise.resolve(mockSettings);
+      case "save_settings": Object.assign(mockSettings, args.settings||{}); return Promise.resolve(null);
+      case "check_vps_health": return Promise.resolve({healthy:true, brand:"Clip4Clicks"});
+      case "sync_with_vps": return Promise.resolve(mockClips.pending.length);
+      case "queue_clip": return Promise.resolve("clip_"+Math.random().toString(36).slice(2,8));
+      case "render_clip": return Promise.resolve("~/Videos/clip4clicks/"+(args.clipId||"clip")+"/clip.mp4");
+      case "approve_clip": moveMock(args.clipId,"approved"); return Promise.resolve(null);
+      case "reject_clip": moveMock(args.clipId,null); return Promise.resolve(null);
+      default: return Promise.resolve(null);
     }
-  </script>
+  }
+  function moveMock(id,to){
+    var i=mockClips.pending.findIndex(function(c){return c.id===id;}); if(i<0) return;
+    var c=mockClips.pending.splice(i,1)[0]; if(to){ c.status=to; mockClips[to].push(c); }
+  }
+  function call(cmd,args){ args=args||{}; try{ return LIVE ? Promise.resolve(_invoke(cmd,args)) : mock(cmd,args); }catch(e){ return Promise.reject(e); } }
+
+  // ---- toast ----
+  var toastEl=$("toast"), toastT;
+  function toast(msg,err){ toastEl.innerHTML=msg; toastEl.className="show"+(err?" err":""); clearTimeout(toastT);
+    toastT=setTimeout(function(){ toastEl.className=""; }, 2600); }
+
+  // ---- helpers ----
+  function fmtDur(s){ if(!s&&s!==0) return ""; s=Math.round(s); return Math.floor(s/60)+":"+String(s%60).padStart(2,"0"); }
+  function host(u){ try{ return new URL(u).hostname.replace(/^www\./,""); }catch(e){ return u||""; } }
+  function grad(id){ var h=0; for(var i=0;i<(id||"x").length;i++) h=(h*31+id.charCodeAt(i))>>>0;
+    var a=h%360, b=(a+40)%360; return "linear-gradient(160deg,hsl("+a+" 45% 28%),hsl("+b+" 55% 20%))"; }
+  var PLATFORMS=["tiktok","youtube","instagram"];
+
+  // ---- routing ----
+  var titles={review:["Review queue","Approve or reject produced clips. Nothing posts without your yes."],
+    produce:["Produce","Queue sources for local rendering into vertical clips."],
+    analytics:["Analytics","Local counts from this operator's clip database."],
+    settings:["Settings","Connect to your fleet and tune this station."]};
+  document.querySelectorAll(".navbtn").forEach(function(b){ b.addEventListener("click",function(){
+    document.querySelectorAll(".navbtn").forEach(function(x){x.classList.remove("on");}); b.classList.add("on");
+    var s=b.dataset.sec;
+    document.querySelectorAll(".section").forEach(function(x){x.classList.remove("on");});
+    $("sec-"+s).classList.add("on");
+    $("secTitle").textContent=titles[s][0]; $("secSub").textContent=titles[s][1];
+    if(s==="analytics") loadAnalytics(); if(s==="review") loadReview();
+  }); });
+
+  // ---- review ----
+  var curTab="pending", queueData={pending:[],approved:[],posted:[]};
+  document.querySelectorAll(".tab").forEach(function(t){ t.addEventListener("click",function(){
+    document.querySelectorAll(".tab").forEach(function(x){x.classList.remove("on");}); t.classList.add("on");
+    curTab=t.dataset.tab; renderClips();
+  }); });
+
+  function loadReview(){ call("get_review_queue").then(function(q){
+    queueData={pending:q.pending||[], approved:q.approved||[], posted:q.posted||[]};
+    $("tPending").textContent=queueData.pending.length; $("tApproved").textContent=queueData.approved.length; $("tPosted").textContent=queueData.posted.length;
+    $("bReview").textContent=queueData.pending.length;
+    renderClips();
+  }).catch(function(e){ toast("Couldn't load queue: "+e,1); }); }
+
+  function renderClips(){
+    var list=queueData[curTab]||[], el=$("clipList");
+    if(!list.length){ el.innerHTML='<div class="empty"><span class="lbl">'+curTab+'</span>Nothing here yet.'+(curTab==="pending"?" Sync with the VPS or queue a source to produce.":"")+'</div>'; return; }
+    el.innerHTML="";
+    list.forEach(function(c){
+      var card=document.createElement("div"); card.className="clip";
+      var sel=new Set((c.platforms&&c.platforms.length)?c.platforms:["tiktok"]);
+      var platsHtml = curTab==="pending" ? '<div class="plats">'+PLATFORMS.map(function(p){
+        return '<button class="pchip'+(sel.has(p)?" on":"")+'" data-p="'+p+'" type="button">'+p+'</button>'; }).join("")+'</div>' : "";
+      var actions = curTab==="pending"
+        ? '<div class="actions"><button class="btn btn-approve" type="button">Approve</button><button class="btn btn-reject" type="button">Reject</button></div>'
+        : '<div class="actions"><span class="status-chip st-'+curTab+'">'+curTab+'</span></div>';
+      card.innerHTML =
+        '<div class="thumb" style="background:'+grad(c.id)+'">'+(c.duration?'<span class="d">'+fmtDur(c.duration)+'</span>':'')+'</div>'+
+        '<div class="body"><div class="title">'+esc(c.title||"Untitled clip")+'</div>'+
+        '<div class="meta"><span>'+esc(host(c.source_url))+'</span><span>'+esc(c.created_at||"")+'</span></div>'+platsHtml+'</div>'+actions;
+      if(curTab==="pending"){
+        card.querySelectorAll(".pchip").forEach(function(ch){ ch.addEventListener("click",function(){
+          if(sel.has(ch.dataset.p)) sel.delete(ch.dataset.p); else sel.add(ch.dataset.p); ch.classList.toggle("on"); }); });
+        card.querySelector(".btn-approve").addEventListener("click",function(ev){
+          var plats=Array.from(sel); if(!plats.length){ toast("Pick at least one platform",1); return; }
+          ev.target.disabled=true;
+          call("approve_clip",{clipId:c.id, platforms:plats}).then(function(){ toast("Approved <b>"+esc(short(c.title))+"</b> → "+plats.join(", ")); loadReview(); loadBadges(); })
+            .catch(function(e){ ev.target.disabled=false; toast("Approve failed: "+e,1); }); });
+        card.querySelector(".btn-reject").addEventListener("click",function(ev){
+          ev.target.disabled=true;
+          call("reject_clip",{clipId:c.id, reason:"rejected by operator"}).then(function(){ toast("Rejected <b>"+esc(short(c.title))+"</b>"); loadReview(); loadBadges(); })
+            .catch(function(e){ ev.target.disabled=false; toast("Reject failed: "+e,1); }); });
+      }
+      el.appendChild(card);
+    });
+  }
+  function short(s){ s=s||"clip"; return s.length>26?s.slice(0,24)+"…":s; }
+  function esc(s){ var d=document.createElement("div"); d.textContent=s==null?"":s; return d.innerHTML; }
+
+  // ---- produce ----
+  var renderQueue=[];
+  $("queueBtn").addEventListener("click",function(){
+    var url=$("srcUrl").value.trim(); if(!url){ toast("Paste a source URL",1); return; }
+    var title=$("srcTitle").value.trim()||host(url);
+    call("queue_clip",{sourceUrl:url, title:title}).then(function(id){
+      renderQueue.unshift({id:id||("q"+Date.now()), url:url, title:title, status:"queued"});
+      $("srcUrl").value=""; $("srcTitle").value=""; renderProduce(); toast("Queued <b>"+esc(short(title))+"</b>");
+    }).catch(function(e){ toast("Queue failed: "+e,1); });
+  });
+  function renderProduce(){
+    var el=$("renderList");
+    if(!renderQueue.length){ el.innerHTML='<div class="empty" style="padding:1.6rem 0">Nothing queued. Add a source above.</div>'; return; }
+    el.innerHTML="";
+    renderQueue.forEach(function(q){
+      var row=document.createElement("div"); row.className="qrow";
+      row.innerHTML='<div class="qt">'+esc(q.title)+'<div class="qs" style="text-transform:none;color:var(--faint)">'+esc(host(q.url))+'</div></div>'+
+        '<span class="qs" data-st>'+q.status+'</span>'+
+        (q.status==="queued"?'<button class="btn btn-ghost" type="button" style="padding:.4rem .7rem">Render</button>':'');
+      var btn=row.querySelector("button");
+      if(btn) btn.addEventListener("click",function(){
+        q.status="rendering"; renderProduce();
+        call("render_clip",{clipId:q.id, sourceUrl:q.url}).then(function(path){ q.status="rendered"; renderProduce(); toast("Rendered → "+esc(String(path))); })
+          .catch(function(e){ q.status="failed"; renderProduce(); toast("Render failed: "+e,1); });
+      });
+      el.appendChild(row);
+    });
+  }
+
+  // ---- analytics ----
+  function loadAnalytics(){ call("get_analytics").then(function(a){
+    var cards=[["Total clips",a.total_clips,false],["Pending",a.pending,true],["Approved",a.approved,false],["Posted",a.posted,false],["Today",a.today_count,false]];
+    $("statGrid").innerHTML=cards.map(function(c){ return '<div class="stat"><div class="n'+(c[2]?" acc":"")+'">'+(c[1]==null?"—":c[1])+'</div><div class="l">'+c[0]+'</div></div>'; }).join("");
+  }).catch(function(e){ toast("Analytics failed: "+e,1); }); }
+
+  // ---- settings ----
+  var settings={};
+  function loadSettings(){ call("get_settings").then(function(s){
+    settings=s||{}; $("setUrl").value=s.vps_url||""; $("setKey").value=s.api_key||""; $("setBrand").value=s.brand_name||"";
+    $("setRender").checked=s.render_local!==false; $("setAuto").checked=s.auto_sync!==false;
+    $("brandSub").textContent=(s.brand_name||"Operator").toUpperCase();
+    $("banner").classList.toggle("show", !s.api_key);
+    checkHealth();
+  }); }
+  $("saveBtn").addEventListener("click",function(){
+    var payload={vps_url:$("setUrl").value.trim(), api_key:$("setKey").value, brand_name:$("setBrand").value.trim()||"Clip4Clicks",
+      render_local:$("setRender").checked, auto_sync:$("setAuto").checked};
+    call("save_settings",{settings:payload}).then(function(){ settings=payload; $("brandSub").textContent=payload.brand_name.toUpperCase();
+      $("banner").classList.toggle("show", !payload.api_key); toast("Settings saved"); checkHealth(); })
+      .catch(function(e){ toast("Save failed: "+e,1); });
+  });
+  $("checkBtn").addEventListener("click",checkHealth);
+  $("bannerGo").addEventListener("click",function(){ document.querySelector('.navbtn[data-sec="settings"]').click(); });
+
+  function checkHealth(){
+    var url=($("setUrl")&&$("setUrl").value.trim())||settings.vps_url||"";
+    if(!url){ setDot(false,"No VPS set"); return; }
+    call("check_vps_health",{vpsUrl:url}).then(function(h){
+      var ok = h===true || (h && h.healthy!==false && h.status!=="down");
+      setDot(ok, ok?("VPS · "+host(url)):"VPS unreachable");
+    }).catch(function(){ setDot(false,"VPS unreachable"); });
+  }
+  function setDot(up,label){ var d=$("vpsDot"); d.className="dot "+(up?"up":"down"); $("vpsLabel").textContent=label; }
+
+  // ---- sync ----
+  $("syncBtn").addEventListener("click",function(){
+    var url=settings.vps_url||($("setUrl")?$("setUrl").value.trim():"");
+    call("sync_with_vps",{vpsUrl:url, apiKey:settings.api_key||""}).then(function(n){ toast("Synced <b>"+(n||0)+"</b> clip"+((n===1)?"":"s")+" from VPS"); loadReview(); loadBadges(); })
+      .catch(function(e){ toast("Sync failed: "+e,1); });
+  });
+
+  function loadBadges(){ call("get_review_queue").then(function(q){ $("bReview").textContent=(q.pending||[]).length; }).catch(function(){}); }
+
+  // ---- boot ----
+  if(!LIVE) $("demoBadge").style.display="";
+  loadSettings(); loadReview(); renderProduce();
+})();
+</script>
+
 </body>
 </html>
