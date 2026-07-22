@@ -2,7 +2,10 @@
 // Each command is callable from JS: invoke('command_name', { args })
 
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{AppHandle, State};
+use tauri_plugin_store::StoreExt;
+
+use crate::{api, db, sidecar};
 
 #[derive(Serialize, Deserialize)]
 pub struct Clip {
@@ -24,13 +27,6 @@ pub struct ReviewQueue {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct VpsHealth {
-    pub api_reachable: bool,
-    pub farm_status: String,
-    pub queue_depth: usize,
-}
-
-#[derive(Serialize, Deserialize)]
 pub struct Settings {
     pub vps_url: String,
     pub api_key: String,
@@ -47,20 +43,34 @@ pub async fn get_review_queue(db: State<'_, db::Database>) -> Result<ReviewQueue
 }
 
 #[tauri::command]
-pub async fn approve_clip(db: State<'_, db::Database>, clip_id: String, platforms: Vec<String>) -> Result<(), String> {
-    db.approve_clip(&clip_id, &platforms).map_err(|e| e.to_string())
+pub async fn approve_clip(
+    db: State<'_, db::Database>,
+    clip_id: String,
+    platforms: Vec<String>,
+) -> Result<(), String> {
+    db.approve_clip(&clip_id, &platforms)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn reject_clip(db: State<'_, db::Database>, clip_id: String, reason: String) -> Result<(), String> {
+pub async fn reject_clip(
+    db: State<'_, db::Database>,
+    clip_id: String,
+    reason: String,
+) -> Result<(), String> {
     db.reject_clip(&clip_id, &reason).map_err(|e| e.to_string())
 }
 
 // ── Production ────────────────────────────────────────────────
 
 #[tauri::command]
-pub async fn queue_clip(db: State<'_, db::Database>, source_url: String, title: String) -> Result<String, String> {
-    db.queue_clip(&source_url, &title).map_err(|e| e.to_string())
+pub async fn queue_clip(
+    db: State<'_, db::Database>,
+    source_url: String,
+    title: String,
+) -> Result<String, String> {
+    db.queue_clip(&source_url, &title)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -71,7 +81,9 @@ pub async fn get_clip_status(db: State<'_, db::Database>, clip_id: String) -> Re
 #[tauri::command]
 pub async fn render_clip(clip_id: String, source_url: String) -> Result<String, String> {
     // Runs ffmpeg/yt-dlp sidecar locally
-    sidecar::render(&clip_id, &source_url).await.map_err(|e| e.to_string())
+    sidecar::render(&clip_id, &source_url)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 // ── Products (from VPS API) ───────────────────────────────────
@@ -84,21 +96,27 @@ pub async fn get_products(vps_url: String) -> Result<serde_json::Value, String> 
 // ── Analytics ─────────────────────────────────────────────────
 
 #[tauri::command]
-pub async fn get_analytics(db: State<'_, db::Database>) -> Result<serde_json::Value, String> {
+pub async fn get_analytics(db: State<'_, db::Database>) -> Result<db::Analytics, String> {
     db.get_analytics().map_err(|e| e.to_string())
 }
 
 // ── VPS sync ──────────────────────────────────────────────────
 
 #[tauri::command]
-pub async fn check_vps_health(vps_url: String) -> Result<VpsHealth, String> {
+pub async fn check_vps_health(vps_url: String) -> Result<api::VpsHealth, String> {
     api::check_health(&vps_url).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn sync_with_vps(db: State<'_, db::Database>, vps_url: String, api_key: String) -> Result<usize, String> {
+pub async fn sync_with_vps(
+    db: State<'_, db::Database>,
+    vps_url: String,
+    api_key: String,
+) -> Result<usize, String> {
     // Pull pending clips from VPS, store locally
-    let clips = api::fetch_pending_clips(&vps_url, &api_key).await.map_err(|e| e.to_string())?;
+    let clips = api::fetch_pending_clips(&vps_url, &api_key)
+        .await
+        .map_err(|e| e.to_string())?;
     let count = db.sync_clips(clips).map_err(|e| e.to_string())?;
     Ok(count)
 }
@@ -106,19 +124,40 @@ pub async fn sync_with_vps(db: State<'_, db::Database>, vps_url: String, api_key
 // ── Settings ──────────────────────────────────────────────────
 
 #[tauri::command]
-pub async fn get_settings(store: tauri_plugin_store::StoreExt) -> Result<Settings, String> {
-    let store = store.get("settings.json").map_err(|e| e.to_string())?;
-    let vps_url = store.get("vps_url").and_then(|v| v.as_str()).unwrap_or("http://localhost:3000").to_string();
-    let api_key = store.get("api_key").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let brand_name = store.get("brand_name").and_then(|v| v.as_str()).unwrap_or("Clip4Clicks").to_string();
-    let render_local = store.get("render_local").and_then(|v| v.as_bool()).unwrap_or(true);
-    let auto_sync = store.get("auto_sync").and_then(|v| v.as_bool()).unwrap_or(true);
-    Ok(Settings { vps_url, api_key, brand_name, render_local, auto_sync })
+pub async fn get_settings(app: AppHandle) -> Result<Settings, String> {
+    let store = app.store("settings.json").map_err(|e| e.to_string())?;
+    let vps_url = store
+        .get("vps_url")
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .unwrap_or_else(|| "http://localhost:3000".to_string());
+    let api_key = store
+        .get("api_key")
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .unwrap_or_default();
+    let brand_name = store
+        .get("brand_name")
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .unwrap_or_else(|| "Clip4Clicks".to_string());
+    let render_local = store
+        .get("render_local")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    let auto_sync = store
+        .get("auto_sync")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    Ok(Settings {
+        vps_url,
+        api_key,
+        brand_name,
+        render_local,
+        auto_sync,
+    })
 }
 
 #[tauri::command]
-pub async fn save_settings(store: tauri_plugin_store::StoreExt, settings: Settings) -> Result<(), String> {
-    let mut store = store.get("settings.json").map_err(|e| e.to_string())?;
+pub async fn save_settings(app: AppHandle, settings: Settings) -> Result<(), String> {
+    let store = app.store("settings.json").map_err(|e| e.to_string())?;
     store.set("vps_url", serde_json::json!(settings.vps_url));
     store.set("api_key", serde_json::json!(settings.api_key));
     store.set("brand_name", serde_json::json!(settings.brand_name));

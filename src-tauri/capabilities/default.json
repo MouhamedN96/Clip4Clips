@@ -6,7 +6,6 @@
   "permissions": [
     "core:default",
     "shell:allow-open",
-    "updater:default",
     "store:default",
     "http:default",
     "notification:default",

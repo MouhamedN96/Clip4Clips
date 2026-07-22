@@ -23,39 +23,18 @@
     ],
     "security": {
       "csp": null
-    },
-    "trayIcon": {
-      "iconPath": "icons/icon.png",
-      "tooltip": "Clip4Clicks"
     }
   },
   "bundle": {
-    "active": true,
-    "targets": ["deb", "msi", "app", "apk"],
+    "active": false,
+    "targets": ["msi"],
     "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
-      "icons/128x128@2x.png",
-      "icons/icon.icns",
       "icons/icon.ico"
-    ],
-    "resources": [
-      "sidecars/ffmpeg",
-      "sidecars/yt-dlp"
     ],
     "externalBin": [],
     "copyright": "© 2026 Clip4Clicks",
     "category": "Productivity",
     "shortDescription": "Autonomous Content Acquisition & Monetization",
     "longDescription": "Clip4Clicks — autonomous clipping, review, and posting for content creators. Offline-first, local rendering, white-label ready."
-  },
-  "plugins": {
-    "updater": {
-      "active": true,
-      "endpoints": [
-        "https://github.com/MouhamedN96/Clip4Clips/releases/latest/download/latest.json"
-      ],
-      "pubkey": ""
-    }
   }
 }

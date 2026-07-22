@@ -1,4 +1,4 @@
-// VPS API client — talks to the ClipForge API on the VPS
+// VPS API client — talks to the Clip4Clicks API on the VPS
 // Used for: fetching pending clips, syncing approval decisions, checking health
 
 use serde::{Deserialize, Serialize};
@@ -18,15 +18,13 @@ pub async fn check_health(vps_url: &str) -> Result<VpsHealth, String> {
 
     let url = format!("{}/health", vps_url.trim_end_matches('/'));
     match client.get(&url).send().await {
-        Ok(resp) if resp.status().is_success() => {
-            Ok(VpsHealth {
-                api_reachable: true,
-                farm_status: "online".to_string(),
-                queue_depth: 0,
-            })
-        }
+        Ok(resp) if resp.status().is_success() => Ok(VpsHealth {
+            api_reachable: true,
+            farm_status: "online".to_string(),
+            queue_depth: 0,
+        }),
         Ok(resp) => Err(format!("VPS health check failed: {}", resp.status())),
-        Err(e) => Ok(VpsHealth {
+        Err(_error) => Ok(VpsHealth {
             api_reachable: false,
             farm_status: "offline".to_string(),
             queue_depth: 0,
@@ -46,7 +44,10 @@ pub async fn get_products(vps_url: &str) -> Result<serde_json::Value, String> {
     Ok(data)
 }
 
-pub async fn fetch_pending_clips(vps_url: &str, _api_key: &str) -> Result<Vec<crate::commands::Clip>, String> {
+pub async fn fetch_pending_clips(
+    vps_url: &str,
+    _api_key: &str,
+) -> Result<Vec<crate::commands::Clip>, String> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .build()

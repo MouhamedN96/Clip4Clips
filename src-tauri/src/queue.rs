@@ -11,7 +11,7 @@ pub struct QueueEntry {
     pub progress: f32,
 }
 
-#[derive(Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub enum QueueStatus {
     Queued,
     Downloading,
@@ -27,7 +27,9 @@ pub struct RenderQueue {
 
 impl RenderQueue {
     pub fn new() -> Self {
-        Self { entries: Vec::new() }
+        Self {
+            entries: Vec::new(),
+        }
     }
 
     pub fn add(&mut self, id: &str, source_url: &str) {
@@ -47,10 +49,32 @@ impl RenderQueue {
     }
 
     pub fn pending(&self) -> usize {
-        self.entries.iter().filter(|e| e.status != QueueStatus::Complete && e.status != QueueStatus::Failed).count()
+        self.entries
+            .iter()
+            .filter(|e| e.status != QueueStatus::Complete && e.status != QueueStatus::Failed)
+            .count()
     }
 
     pub fn list(&self) -> &[QueueEntry] {
         &self.entries
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{QueueStatus, RenderQueue};
+
+    #[test]
+    fn pending_count_tracks_terminal_statuses() {
+        let mut queue = RenderQueue::new();
+        queue.add("one", "https://example.com/one");
+        queue.add("two", "https://example.com/two");
+        assert_eq!(queue.pending(), 2);
+
+        queue.update("one", QueueStatus::Complete, 1.0);
+        queue.update("two", QueueStatus::Failed, 0.4);
+        assert_eq!(queue.pending(), 0);
+        assert_eq!(queue.list()[0].progress, 1.0);
+        assert_eq!(queue.list()[1].status, QueueStatus::Failed);
     }
 }
