@@ -4,6 +4,7 @@ version = "1.0.0"
 description = "Clip4Clicks — Autonomous Content Acquisition & Monetization"
 authors = ["Clip4Clicks"]
 license = "MIT"
+# The GitHub repository keeps its legacy Clip4Clips slug; the product is Clip4Clicks.
 repository = "https://github.com/MouhamedN96/Clip4Clips"
 edition = "2021"
 rust-version = "1.70"

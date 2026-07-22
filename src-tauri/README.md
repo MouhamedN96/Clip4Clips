@@ -1,20 +1,22 @@
 # Clip4Clicks Tauri Desktop App
 
-Offline-first desktop client for Clip4Clicks. Local rendering + VPS sync.
+Windows-alpha desktop client for Clip4Clicks. The native shell and local state are
+working; VPS synchronization, the review UI, and local rendering are the next
+checkpoints.
 
 ## Architecture
 
 ```
 Tauri app (creator's laptop)
-  ├── Frontend: dashboard HTML/CSS/JS (bundled, no browser needed)
+  ├── Frontend: placeholder HTML (dashboard deferred)
   ├── Rust backend:
   │   ├── SQLite: local clip queue, settings, analytics
-  │   ├── ffmpeg + yt-dlp sidecars: local rendering (offline)
-  │   └── VPS API client: sync clips, approvals, health checks
-  └── System tray + native notifications
+  │   ├── ffmpeg + yt-dlp adapter: uses tools installed on PATH for now
+  │   └── VPS API client scaffold: sync contract deferred
+  └── Native notifications plugin (tray disabled for the alpha)
 
 VPS (stays):
-  ├── ClipForge API: billing, orchestration, analytics aggregation
+  ├── Clip4Clicks API: billing, orchestration, analytics aggregation
   ├── Hermes phone farm: posting approved clips
   └── Whop webhooks: subscription management
 ```
@@ -24,7 +26,7 @@ VPS (stays):
 ```
 src-tauri/
   Cargo.toml          # Rust deps + Tauri config
-  tauri.conf.json     # App config (window, bundle, updater)
+  tauri.conf.json     # Windows-alpha app config (release bundle disabled)
   build.rs            # Tauri build script
   src/
     main.rs           # Entry point
@@ -36,8 +38,8 @@ src-tauri/
     queue.rs          # Render queue management
   capabilities/
     default.json      # Permissions (shell, http, fs, notifications)
-  icons/              # App icons (placeholder)
-  sidecars/           # Bundled ffmpeg + yt-dlp binaries (per-platform)
+  icons/              # Development icon; release artwork deferred
+  sidecars/           # Deferred; no binaries are currently bundled
 ```
 
 ## Commands (frontend → Rust)
@@ -45,46 +47,41 @@ src-tauri/
 | Command | What |
 |---|---|
 | `get_review_queue` | Fetch pending/approved/posted clips from local SQLite |
-| `approve_clip` | Approve a clip + set platforms |
-| `reject_clip` | Reject a clip with reason |
-| `queue_clip` | Add a source URL to the local render queue |
-| `render_clip` | Run yt-dlp + ffmpeg locally (offline rendering) |
-| `get_clip_status` | Check render status of a clip |
-| `get_products` | Fetch products from VPS API |
+| `approve_clip` | Set local clip status to approved + set platforms |
+| `reject_clip` | Set local clip status to rejected |
+| `queue_clip` | Add a source URL to the local SQLite clip table |
+| `render_clip` | Invoke system yt-dlp + ffmpeg (not yet end-to-end verified) |
+| `get_clip_status` | Read locally stored clip status |
+| `get_products` | VPS API scaffold; contract correction deferred |
 | `get_analytics` | Local analytics from SQLite |
 | `check_vps_health` | Check if VPS API is reachable |
-| `sync_with_vps` | Pull pending clips from VPS to local |
+| `sync_with_vps` | VPS-to-local sync scaffold; contract correction deferred |
 | `get_settings` / `save_settings` | App settings (VPS URL, API key, brand) |
 
 ## Build
 
 ```bash
-# Install Tauri CLI
-cargo install tauri-cli --version "^2.0"
+# Verify the native foundation
+cargo check --manifest-path src-tauri/Cargo.toml
+cargo test --manifest-path src-tauri/Cargo.toml
+cargo run --manifest-path src-tauri/Cargo.toml
 
-# Development (hot reload)
-cargo tauri dev
-
-# Production build (cross-compile per platform)
-cargo tauri build --target x86_64-pc-windows-msvc  # Windows
-cargo tauri build --target x86_64-apple-darwin      # macOS
-cargo tauri build --target aarch64-linux-android    # Android
-
-# Output: installers in src-tauri/target/release/bundle/
+# The future dashboard dev server will run on http://localhost:5173.
 ```
 
-## Sidecar Setup
+`bundle.active` is currently `false`, so this alpha does not produce an MSI or
+other installer. Release packaging will be enabled after signed release assets
+and the required runtime binaries exist. macOS, Linux, and Android packaging are
+outside this Windows-alpha checkpoint.
 
-Bundle ffmpeg + yt-dlp per platform:
+## Local Tools (Alpha)
 
-```bash
-mkdir -p src-tauri/sidecars
-# Linux
-cp /usr/bin/ffmpeg src-tauri/sidecars/ffmpeg
-cp /usr/bin/yt-dlp src-tauri/sidecars/yt-dlp
-# Windows (download from ffmpeg.org + yt-dlp GitHub)
-# macOS (brew install ffmpeg yt-dlp, copy from /opt/homebrew/bin/)
-```
+FFmpeg and yt-dlp are **not bundled**. The current adapter detects executables on
+the system `PATH`, and rendering will return an error when either tool is absent.
+Bundled, versioned binaries are deferred to the rendering/release checkpoint.
+
+The checked-in sidecar ignore rules reserve their eventual paths; they do not
+mean those binaries are present in the application.
 
 ## White-Label
 
@@ -98,19 +95,22 @@ cp /usr/bin/yt-dlp src-tauri/sidecars/yt-dlp
 
 ## Updater
 
-Auto-update via GitHub releases. On launch, Tauri checks:
-```
-https://github.com/MouhamedN96/Clip4Clips/releases/latest/download/latest.json
-```
-
-Publish a new release → users get updated on next launch.
+The updater is **disabled** for the Windows alpha. There is no launch-time update
+check, updater endpoint, or updater permission in the current build. It will stay
+disabled until release signing, a public key, and signed update artifacts are in
+place.
 
 ## Status
 
-**Scaffold** — structure is ready, code compiles (pending Tauri CLI install). Next steps:
-1. Build the frontend dashboard (reuse the ClipForge web UI)
-2. Bundle ffmpeg + yt-dlp sidecars per target platform
-3. Test local rendering pipeline
-4. Wire VPS sync (pull clips, push approvals)
-5. Generate app icons
-6. First build: `cargo tauri build`
+**Windows foundation:** the native application compiles and launches, creates its
+app-data directory, opens persistent SQLite state, and registers that database as
+Tauri managed state. Focused Rust tests cover persistence, review status, and the
+in-memory render queue.
+
+Still deferred:
+
+1. Build the review dashboard and preview experience.
+2. Correct and verify the VPS sync/approval API contract.
+3. Exercise local vertical rendering with installed FFmpeg and yt-dlp.
+4. Add vetted sidecar binaries and release artwork.
+5. Configure MSI bundling, updater signing, and distribution.
