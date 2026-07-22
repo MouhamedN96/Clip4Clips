@@ -35,6 +35,24 @@ pub struct Settings {
     pub auto_sync: bool,
 }
 
+/// Read the VPS connection (url, api_key) from the settings store.
+fn read_conn(app: &AppHandle) -> (String, String) {
+    match app.store("settings.json") {
+        Ok(store) => {
+            let url = store
+                .get("vps_url")
+                .and_then(|v| v.as_str().map(str::to_owned))
+                .unwrap_or_default();
+            let key = store
+                .get("api_key")
+                .and_then(|v| v.as_str().map(str::to_owned))
+                .unwrap_or_default();
+            (url, key)
+        }
+        Err(_) => (String::new(), String::new()),
+    }
+}
+
 // ── Review queue ──────────────────────────────────────────────
 
 #[tauri::command]
@@ -44,20 +62,36 @@ pub async fn get_review_queue(db: State<'_, db::Database>) -> Result<ReviewQueue
 
 #[tauri::command]
 pub async fn approve_clip(
+    app: AppHandle,
     db: State<'_, db::Database>,
     clip_id: String,
     platforms: Vec<String>,
 ) -> Result<(), String> {
+    // Push to the VPS (source of truth for posting) when configured. Best-effort:
+    // the local decision is authoritative for the UI; a re-sync reconciles later.
+    let (vps_url, api_key) = read_conn(&app);
+    if !vps_url.is_empty() {
+        if let Err(e) = api::approve_clip_remote(&vps_url, &api_key, &clip_id, &platforms).await {
+            log::warn!("VPS approve push failed for {clip_id}: {e}");
+        }
+    }
     db.approve_clip(&clip_id, &platforms)
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn reject_clip(
+    app: AppHandle,
     db: State<'_, db::Database>,
     clip_id: String,
     reason: String,
 ) -> Result<(), String> {
+    let (vps_url, api_key) = read_conn(&app);
+    if !vps_url.is_empty() {
+        if let Err(e) = api::reject_clip_remote(&vps_url, &api_key, &clip_id, &reason).await {
+            log::warn!("VPS reject push failed for {clip_id}: {e}");
+        }
+    }
     db.reject_clip(&clip_id, &reason).map_err(|e| e.to_string())
 }
 

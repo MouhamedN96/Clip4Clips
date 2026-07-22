@@ -424,7 +424,7 @@
     var url=($("setUrl")&&$("setUrl").value.trim())||settings.vps_url||"";
     if(!url){ setDot(false,"No VPS set"); return; }
     call("check_vps_health",{vpsUrl:url}).then(function(h){
-      var ok = h===true || (h && h.healthy!==false && h.status!=="down");
+      var ok = h===true || (h && (typeof h.api_reachable==="boolean" ? h.api_reachable : (h.healthy!==false && h.status!=="down")));
       setDot(ok, ok?("VPS · "+host(url)):"VPS unreachable");
     }).catch(function(){ setDot(false,"VPS unreachable"); });
   }

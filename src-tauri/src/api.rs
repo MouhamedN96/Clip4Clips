@@ -1,7 +1,15 @@
-// VPS API client — talks to the Clip4Clicks API on the VPS
-// Used for: fetching pending clips, syncing approval decisions, checking health
+// VPS API client — talks to the Clip4Clicks API on the VPS.
+// Contract matches src/api/server.js:
+//   GET  /health
+//   GET  /api/clips/review-queue  -> { count, clips: [ {id,title,source_url,status,metadata,created_at} ] }
+//   POST /api/clips/:id/approve   <- { platforms }
+//   POST /api/clips/:id/reject    <- { reason }
+// Auth is optional today (no middleware); the api_key is sent as a bearer token
+// when set, so it keeps working once the API gains auth.
 
 use serde::{Deserialize, Serialize};
+
+use crate::commands::Clip;
 
 #[derive(Serialize, Deserialize)]
 pub struct VpsHealth {
@@ -10,21 +18,32 @@ pub struct VpsHealth {
     pub queue_depth: usize,
 }
 
-pub async fn check_health(vps_url: &str) -> Result<VpsHealth, String> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
+fn client(secs: u64) -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(secs))
         .build()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())
+}
 
-    let url = format!("{}/health", vps_url.trim_end_matches('/'));
-    match client.get(&url).send().await {
+fn base(vps_url: &str) -> &str {
+    vps_url.trim_end_matches('/')
+}
+
+pub async fn check_health(vps_url: &str) -> Result<VpsHealth, String> {
+    let c = client(10)?;
+    let url = format!("{}/health", base(vps_url));
+    match c.get(&url).send().await {
         Ok(resp) if resp.status().is_success() => Ok(VpsHealth {
             api_reachable: true,
             farm_status: "online".to_string(),
             queue_depth: 0,
         }),
-        Ok(resp) => Err(format!("VPS health check failed: {}", resp.status())),
-        Err(_error) => Ok(VpsHealth {
+        Ok(resp) => Ok(VpsHealth {
+            api_reachable: false,
+            farm_status: format!("http {}", resp.status().as_u16()),
+            queue_depth: 0,
+        }),
+        Err(_) => Ok(VpsHealth {
             api_reachable: false,
             farm_status: "offline".to_string(),
             queue_depth: 0,
@@ -32,34 +51,119 @@ pub async fn check_health(vps_url: &str) -> Result<VpsHealth, String> {
     }
 }
 
-pub async fn get_products(vps_url: &str) -> Result<serde_json::Value, String> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .map_err(|e| e.to_string())?;
+// ── Review queue ──────────────────────────────────────────────
 
-    let url = format!("{}/api/clips/queue", vps_url.trim_end_matches('/'));
-    let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
-    let data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-    Ok(data)
+#[derive(Deserialize)]
+struct ReviewQueueResp {
+    #[serde(default)]
+    clips: Vec<RemoteClip>,
 }
 
-pub async fn fetch_pending_clips(
-    vps_url: &str,
-    _api_key: &str,
-) -> Result<Vec<crate::commands::Clip>, String> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .map_err(|e| e.to_string())?;
+#[derive(Deserialize)]
+struct RemoteClip {
+    id: String,
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    source_url: Option<String>,
+    #[serde(default)]
+    status: Option<String>,
+    #[serde(default)]
+    metadata: Option<serde_json::Value>,
+    #[serde(default)]
+    created_at: Option<String>,
+}
 
-    let url = format!("{}/api/clips/queue", vps_url.trim_end_matches('/'));
-    let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
+fn map_clip(r: RemoteClip) -> Clip {
+    let meta = r.metadata.unwrap_or_else(|| serde_json::json!({}));
+    let platforms = meta
+        .get("platforms")
+        .and_then(|v| v.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str().map(String::from))
+                .collect::<Vec<_>>()
+        })
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| vec!["tiktok".to_string()]);
 
-    if !resp.status().is_success() {
-        return Err(format!("VPS API error: {}", resp.status()));
+    Clip {
+        id: r.id,
+        title: r.title.unwrap_or_default(),
+        source_url: r.source_url.unwrap_or_default(),
+        status: r.status.unwrap_or_else(|| "pending_review".to_string()),
+        thumbnail: meta
+            .get("thumbnail")
+            .and_then(|v| v.as_str())
+            .map(String::from),
+        duration: meta.get("duration").and_then(|v| v.as_f64()),
+        platforms,
+        created_at: r.created_at.unwrap_or_default(),
     }
+}
 
-    let clips: Vec<crate::commands::Clip> = resp.json().await.map_err(|e| e.to_string())?;
-    Ok(clips)
+pub async fn fetch_pending_clips(vps_url: &str, api_key: &str) -> Result<Vec<Clip>, String> {
+    let c = client(15)?;
+    let url = format!("{}/api/clips/review-queue", base(vps_url));
+    let mut req = c.get(&url);
+    if !api_key.is_empty() {
+        req = req.bearer_auth(api_key);
+    }
+    let resp = req.send().await.map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("VPS review-queue error: {}", resp.status()));
+    }
+    let parsed: ReviewQueueResp = resp.json().await.map_err(|e| e.to_string())?;
+    Ok(parsed.clips.into_iter().map(map_clip).collect())
+}
+
+// ── Approve / reject push ─────────────────────────────────────
+
+pub async fn approve_clip_remote(
+    vps_url: &str,
+    api_key: &str,
+    clip_id: &str,
+    platforms: &[String],
+) -> Result<(), String> {
+    let c = client(15)?;
+    let url = format!("{}/api/clips/{}/approve", base(vps_url), clip_id);
+    let mut req = c.post(&url).json(&serde_json::json!({ "platforms": platforms }));
+    if !api_key.is_empty() {
+        req = req.bearer_auth(api_key);
+    }
+    let resp = req.send().await.map_err(|e| e.to_string())?;
+    if resp.status().is_success() {
+        Ok(())
+    } else {
+        Err(format!("VPS approve failed: {}", resp.status()))
+    }
+}
+
+pub async fn reject_clip_remote(
+    vps_url: &str,
+    api_key: &str,
+    clip_id: &str,
+    reason: &str,
+) -> Result<(), String> {
+    let c = client(15)?;
+    let url = format!("{}/api/clips/{}/reject", base(vps_url), clip_id);
+    let mut req = c.post(&url).json(&serde_json::json!({ "reason": reason }));
+    if !api_key.is_empty() {
+        req = req.bearer_auth(api_key);
+    }
+    let resp = req.send().await.map_err(|e| e.to_string())?;
+    if resp.status().is_success() {
+        Ok(())
+    } else {
+        Err(format!("VPS reject failed: {}", resp.status()))
+    }
+}
+
+// ── Products (VPS scaffold; not used by the operator UI yet) ───
+
+pub async fn get_products(vps_url: &str) -> Result<serde_json::Value, String> {
+    let c = client(15)?;
+    let url = format!("{}/api/clips/queue", base(vps_url));
+    let resp = c.get(&url).send().await.map_err(|e| e.to_string())?;
+    resp.json().await.map_err(|e| e.to_string())
 }
